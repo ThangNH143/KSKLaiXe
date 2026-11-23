@@ -1,9 +1,35 @@
 import { ping } from '@gksk/shared';
 import { createApp } from './app.js';
+import { ConfigError, loadConfigFromEnvFile } from './config.js';
+import { createLogger } from './logger.js';
 
-const port = Number(process.env.PORT ?? 3001);
-const app = createApp();
+function start(): void {
+  let config;
+  try {
+    config = loadConfigFromEnvFile();
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      process.stderr.write(`${err.message}\n`);
+    } else {
+      process.stderr.write(`Lỗi khởi động cấu hình: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    process.exit(1);
+  }
 
-app.listen(port, '127.0.0.1', () => {
-  process.stdout.write(`GKSKLaiXe server listening on http://127.0.0.1:${port} (shared=${ping()})\n`);
-});
+  const logger = createLogger({ level: config.logLevel });
+  const app = createApp();
+
+  app.listen(config.port, '127.0.0.1', () => {
+    logger.info(
+      {
+        port: config.port,
+        appEnv: config.appEnv,
+        facilityId: config.gksk.facilityId,
+        shared: ping(),
+      },
+      'GKSKLaiXe server listening',
+    );
+  });
+}
+
+start();

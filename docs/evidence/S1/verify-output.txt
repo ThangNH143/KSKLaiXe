@@ -1,0 +1,57 @@
+======================================================================
+GKSKLaiXe — KIỂM CHỨNG BƯỚC S1: CẤU HÌNH (ZOD) & LOGGER (PINO REDACT)
+Thời điểm chạy: 2026-11-23T10:00:33.494Z
+======================================================================
+
+[1] Kiểm tra file .env.example
+PASS: .env.example chứa đủ 20/20 biến chuẩn.
+
+[2] Kiểm chứng fail-fast khi thiếu biến cấu hình
+Thông báo lỗi fail-fast thực tế:
+Cấu hình môi trường (.env) không hợp lệ:
+  - DB_USER: Thiếu biến bắt buộc DB_USER
+  - DB_NAME: Thiếu biến bắt buộc DB_NAME
+  - GKSK_BASE_URL: Thiếu biến bắt buộc GKSK_BASE_URL
+  - GKSK_USERNAME: Thiếu biến bắt buộc GKSK_USERNAME
+  - GKSK_PASSWORD: Thiếu biến bắt buộc GKSK_PASSWORD
+  - GKSK_FACILITY_ID: Thiếu biến bắt buộc GKSK_FACILITY_ID
+  - GKSK_FACILITY_NAME: Thiếu biến bắt buộc GKSK_FACILITY_NAME
+  - APP_LOGIN_USER: Thiếu biến bắt buộc APP_LOGIN_USER
+  - APP_LOGIN_PASSWORD_HASH: Thiếu biến bắt buộc APP_LOGIN_PASSWORD_HASH
+  - SESSION_SECRET: Biến SESSION_SECRET phải có ít nhất 16 ký tự
+PASS: Nêu rõ tên biến thiếu/sai và không lộ giá trị bí mật.
+
+[3] Kiểm chứng chuẩn hóa GKSK_BASE_URL, production HTTPS và GKSK_SENDER_ID mặc định
+- GKSK_BASE_URL chuẩn hóa: "https://api.dongnai.gov.vn///" -> "https://api.dongnai.gov.vn"
+- GKSK_SENDER_ID mặc định: "" -> "75001"
+- APP_ENV=production + http:// -> bị chặn đúng: Khi APP_ENV=production, GKSK_BASE_URL bắt buộc phải dùng https://
+PASS: Chuẩn hóa URL, HTTPS production và mặc định GKSK_SENDER_ID hoạt động chính xác.
+
+[4] Kiểm chứng chạy server/src/index.ts khi thiếu .env (thoát mã != 0)
+- Exit code: 1
+- Stderr:
+◇ injected env (0) from .env
+◇ injected env (0) from ..\.env
+Cấu hình môi trường (.env) không hợp lệ:
+  - DB_HOST: Thiếu biến bắt buộc DB_HOST
+  - DB_USER: Thiếu biến bắt buộc DB_USER
+  - DB_PASSWORD: Thiếu biến bắt buộc DB_PASSWORD
+  - DB_NAME: Thiếu biến bắt buộc DB_NAME
+  - GKSK_BASE_URL: Thiếu biến bắt buộc GKSK_BASE_URL
+  - GKSK_USERNAME: Thiếu biến bắt buộc GKSK_USERNAME
+  - GKSK_PASSWORD: Thiếu biến bắt buộc GKSK_PASSWORD
+  - GKSK_FACILITY_ID: Thiếu biến bắt buộc GKSK_FACILITY_ID
+  - GKSK_FACILITY_NAME: Thiếu biến bắt buộc GKSK_FACILITY_NAME
+  - APP_LOGIN_USER: Thiếu biến bắt buộc APP_LOGIN_USER
+  - APP_LOGIN_PASSWORD_HASH: Thiếu biến bắt buộc APP_LOGIN_PASSWORD_HASH
+  - SESSION_SECRET: Thiếu biến bắt buộc SESSION_SECRET
+PASS: Server fail-fast thoát mã khác 0 với thông báo rõ ràng.
+
+[5] Kiểm chứng Pino logger redact mật khẩu, token và PII
+Dòng JSON log thực tế sau redact:
+{"level":30,"time":"2026-11-23T10:00:34.892Z","service":"gksk-server","msgId":"750012611230123456789abcdef01234567","password":"[Redacted]","dbPassword":"[Redacted]","authorization":"[Redacted]","token":"[Redacted]","data":"[Redacted]","fields":"[Redacted]","nested":{"headers":{"Authorization":"[Redacted]"},"db":{"dbPassword":"[Redacted]"}},"msg":"Kiểm thử redact S1"}
+PASS: 100% trường bí mật & PII đã bị che thành "[Redacted]", 0 giá trị bị rò rỉ.
+
+======================================================================
+KẾT LUẬN: TOÀN BỘ 5 MỤC KIỂM CHỨNG BƯỚC S1 ĐỀU ĐẠT (PASS)
+======================================================================

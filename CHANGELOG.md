@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S0 — Khởi tạo monorepo**
-- Bước kế tiếp: **S1 — Cấu hình và logger**
+- Bước đã xong: **S1 — Cấu hình và logger**
+- Bước kế tiếp: **S2 — `shared`: đặc tả trường và kiểu**
 - Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,46 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S1] Cấu hình và logger — 2026-11-23 — Antigravity
+### Đã làm
+- Cài đặt `zod`, `pino`, `dotenv` cho workspace `@gksk/server`.
+- Tạo `.env.example` đầy đủ 20 biến chuẩn theo `project_context.md §7` (bao gồm cấu hình MSSQL `DB_*`, cấu hình CSYT `GKSK_*`, và đăng nhập nội bộ `APP_LOGIN_*`, `SESSION_SECRET`).
+- Viết `server/src/config.ts`:
+  - `loadConfig(env)` kiểm tra cấu hình bằng `zod` theo cơ chế fail-fast (`ConfigError`), liệt kê rõ từng biến thiếu/sai và **tuyệt đối không in giá trị bí mật**.
+  - Chuẩn hóa `GKSK_BASE_URL` (cắt bỏ dấu `/` ở cuối), cho phép `http://localhost` khi `APP_ENV=test`, bắt buộc `https://` khi `APP_ENV=production`.
+  - `GKSK_SENDER_ID` trống mặc định bằng `GKSK_FACILITY_ID`.
+  - Cung cấp `loadConfigFromEnvFile()` và `getPublicConfig(config)` (trả thông tin công khai cho `/api/config`, không lộ bí mật hay thông tin DB).
+- Viết `server/src/logger.ts` bằng `pino` với `REDACT_PATHS` che toàn bộ `authorization`, `Authorization`, `password`, `dbPassword`, `token`, `fields`, `fields_json`, `data`, `cookie`, `set-cookie`, `sessionSecret`, `loginPasswordHash`, `privateKey`, `privateKeyPem` ở mọi cấp độ lồng nhau thành `"[Redacted]"`.
+- Cập nhật `server/src/index.ts` nạp cấu hình fail-fast khi khởi động (thoát mã `1` với thông báo rõ nếu thiếu `.env`) và dùng `pino` logger thay cho ghi log thô.
+- Viết bộ unit test `server/src/config.test.ts` (11 ca) và `server/src/logger.test.ts` (3 ca), và script kiểm chứng độc lập `scripts/verify-S1.ts`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Gốc: `.env.example`.
+- Server: `server/package.json`, `server/src/config.ts`, `server/src/logger.ts`, `server/src/index.ts`, `server/src/config.test.ts`, `server/src/logger.test.ts`.
+- Kiểm chứng: `scripts/verify-S1.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S1/`)
+- `docs/evidence/S1/verify-output.txt`: log chạy độc lập 5 mục kiểm chứng (đủ 20 biến `.env.example`, fail-fast khi thiếu biến không lộ bí mật, chuẩn hóa URL & ép HTTPS ở production & mặc định `GKSK_SENDER_ID`, chạy thật `server/src/index.ts` thiếu `.env` thoát mã `1`, và log `pino` che toàn bộ mật khẩu/token/PII thành `"[Redacted]"`).
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`).
+- `npm.cmd test`: PASS — 5/5 test files, 17/17 tests (`shared`: 1, `server`: 15 [11 config + 3 logger + 1 app], `client`: 1).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S1.ts`: PASS toàn bộ 5 mục kiểm chứng.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 17/17 PASS).
+- ✔ Chạy server thiếu `.env` → thoát mã `1` (`!= 0`) với thông báo nêu rõ từng biến thiếu.
+- ✔ Có `docs/evidence/S1/verify-output.txt` chứng minh `pino` redact hoạt động ở cả cấp gốc lẫn lồng nhau.
+- ✔ Không có bí mật nào trong repo (`.env` bị `.gitignore` chặn; `.env.example` chỉ chứa placeholder).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Sử dụng `zod@^4.6.7`, `pino@^10.4.0`, `dotenv@^18.0.10`. Bổ sung `LOG_LEVEL` (tùy chọn, mặc định `info`) và hàm `getPublicConfig()` sẵn sàng cho endpoint `GET /api/config`.
+
+### Ghi chú cho Agent sau
+- Khi chạy `npm test` cho `@gksk/server` trên Windows, Supertest (`app.test.ts`) bind port `127.0.0.1` cục bộ cần chạy ngoài sandbox (nếu bị `EACCES`).
+- Đã sẵn sàng sang bước **S2 — `shared`: đặc tả trường và kiểu** (`packages/shared/src/{fields,types,messages,index}.ts`).
 
 ## [S0] Khởi tạo monorepo — 2026-11-23 — Antigravity
 ### Đã làm
