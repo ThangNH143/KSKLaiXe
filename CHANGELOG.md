@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S7 — GKSK client (login, push, status, retry)**
-- Bước kế tiếp: **S8 — DB (MSSQL `gksk_*` & Repository Interface)**
+- Bước đã xong: **S8 — DB (MSSQL `gksk_*` & Repository Interface)**
+- Bước kế tiếp: **S9 — Dịch vụ gửi (máy trạng thái) và gửi hàng loạt**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,49 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S8] DB (MSSQL `gksk_*` & Repository Interface) — 2026-11-23 — Antigravity
+### Đã làm
+- Cài đặt `mssql` và `@types/mssql` vào workspace `@gksk/server`.
+- Tạo `server/src/db/types.ts` định nghĩa giao diện `DbRepositories` cho 3 kho `batches`, `certificates`, `submissions`:
+  - `batches`: `create`, `findById`, `list`.
+  - `certificates`: `upsertBySo` & `upsertManyBySo` (lưu cả bản ghi `ready` lẫn `invalid` có `SO`), `findById`, `findByIds`, `findBySo`, `findBySoList(soList)` (tra cứu hàng loạt cho xem trước Import Excel), `list` (truy vấn phân trang theo 4 tab đối soát `all | unsent | accepted | attention`, lọc `batchId`, khoảng ngày `fromDate`/`toDate`, tìm kiếm `q`, trả kèm `counts`), `countByStatus`, `updateStatus`, `deleteById` (`ON DELETE CASCADE` sang `submissions`), và `recoverOnStartup` (chuyển giấy đang kẹt ở `sending` → `error`).
+  - `submissions`: `create`, `update`, `findById`, `findByMsgId`, `listByCertificateId`, `findLatestByCertificateId`, `findLatestByCertificateIds`, `findPendingByCertificateAndSha` (phục vụ khôi phục `msg_id` chưa có kết quả cùng `data_sha256` ở S9).
+- Tạo `server/src/db/inMemoryRepo.ts` (`InMemoryRepositories` & `createInMemoryRepositories`) làm mặc định cho toàn bộ `npm test` để chạy nhanh và tuyệt đối không chạm vào MSSQL đang vận hành.
+- Tạo `server/src/db/migrations/001_init.sql`:
+  - 100% tên bảng có tiền tố `gksk_` (`gksk_schema_migrations`, `gksk_import_batches`, `gksk_certificates`, `gksk_submissions`) và 3 chỉ mục `ix_gksk_*` (`ix_gksk_cert_status`, `ix_gksk_cert_batch`, `ix_gksk_sub_cert`).
+  - Tự động kiểm tra `IF OBJECT_ID(N'dbo.gksk_...', N'U') IS NULL` trước khi tạo bảng và `IF NOT EXISTS` trước khi tạo chỉ mục; tuyệt đối không có lệnh `DROP` hay `TRUNCATE`.
+- Tạo `server/src/db/mssqlRepo.ts` (`MssqlRepositories`) và `server/src/db/connection.ts` (`buildMssqlPoolConfig`, `createMssqlPool`, `runMigrations`, `createRepositories`):
+  - 100% câu truy vấn SQL (24/24 câu) là chuỗi SQL tĩnh hoàn toàn (`0` nội suy `${...}`) và ràng buộc toàn bộ tham số `@param` qua `request.input('param', sql.Type, value)`.
+  - Escape ký tự đại diện T-SQL `LIKE` (`%`, `_`, `[`, `\`) qua `escapeSqlLikePattern()` kết hợp `LIKE @qPattern ESCAPE N'\'` để tìm kiếm `q` an toàn tuyệt đối với `%`, `_`, `'`.
+- Viết bộ contract test & quét tĩnh an toàn SQL `server/src/db/repo.test.ts` (10 ca kiểm thử).
+- Viết và chạy script kiểm chứng `scripts/verify-S8.ts` xuất biên bản kiểm chứng toàn bộ thao tác Repository và bảng kiểm toán 24 câu truy vấn SQL ra `docs/evidence/S8/db-verification-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server DB: `server/src/db/types.ts`, `server/src/db/inMemoryRepo.ts`, `server/src/db/mssqlRepo.ts`, `server/src/db/connection.ts`, `server/src/db/migrations/001_init.sql`, `server/src/db/repo.test.ts`.
+- Cấu hình gói: `server/package.json`, `package-lock.json`.
+- Kiểm chứng: `scripts/verify-S8.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S8/`)
+- `docs/evidence/S8/db-verification-report.md`: biên bản kiểm chứng 9 hạng mục hợp đồng `DbRepositories` và bảng kiểm toán tĩnh 4 bảng `gksk_*`, 3 chỉ mục `ix_gksk_*`, 0 lệnh `DROP`/`TRUNCATE`, và 24/24 câu truy vấn SQL tham số hóa 100% qua `.input()`.
+- `docs/evidence/S8/verify-output.txt`: bản sao log báo cáo kiểm chứng S8.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 15/15 test files, 218/218 tests (`shared`: 145, `server`: 62 [10 db repo + 17 client + 5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1, `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S8.ts`: PASS 100% (24 SQL queries audited, 0 DROP/TRUNCATE, 100% gksk_* prefix).
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 218/218 PASS, 0 skip/only).
+- ✔ Có `docs/evidence/S8/db-verification-report.md`.
+- ✔ Grep/quét tĩnh xác nhận mọi câu SQL trong `mssqlRepo.ts` và `connection.ts` đều dùng `@param` qua `.input()`, 0 câu lệnh `DROP`/`TRUNCATE`, và 100% tên bảng bắt đầu bằng `gksk_`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Bổ sung thêm `findLatestByCertificateIds()` và `findPendingByCertificateAndSha()` trong `SubmissionsRepository` để bước S9 (`sendService`) và S10 (`exportService`) truy vấn nhanh mà không phải lặp N+1 truy vấn.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S9 — Dịch vụ gửi (máy trạng thái) và gửi hàng loạt** (`server/src/services/{sendService,jobService}.ts`, `server/src/routes/send.ts`).
 
 ## [S7] GKSK client (login, push, status, retry) — 2026-11-23 — Antigravity
 ### Đã làm

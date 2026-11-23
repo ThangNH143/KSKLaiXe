@@ -148,9 +148,7 @@ export async function withRetry(
 
       if (statusResult.found) {
         // Server đã xử lý xong gói tin này -> lấy kết quả luôn, tuyệt đối KHÔNG push lại!
-        return {
-          kind: statusResult.kind,
-          status: statusResult.status,
+        const recoveredBase = {
           msgId: currentEnvelope.header.msg_id,
           envelope: currentEnvelope,
           attempts: pushAttempts,
@@ -166,6 +164,9 @@ export async function withRetry(
           data: statusResult.data,
           timeline,
         };
+        return statusResult.kind === 'accepted'
+          ? { ...recoveredBase, kind: 'accepted', status: 'accepted' }
+          : { ...recoveredBase, kind: 'rejected', status: 'rejected' };
       }
 
       if (statusResult.kind === 'config') {

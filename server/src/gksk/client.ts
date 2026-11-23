@@ -674,9 +674,7 @@ export class GkskClient implements GkskRetryTarget {
       detail: `HTTP 200 (${effectiveResCode}) -> data.status=${parsedData.status} (errors=${parsedData.errors.length}, warnings=${parsedData.warnings.length})`,
     });
 
-    return {
-      kind: parsedData.status,
-      status: parsedData.status,
+    const baseSuccess = {
       msgId,
       envelope,
       httpStatus: 200,
@@ -689,6 +687,10 @@ export class GkskClient implements GkskRetryTarget {
       warnings: parsedData.warnings,
       data: parsedData,
     };
+
+    return parsedData.status === 'accepted'
+      ? { ...baseSuccess, kind: 'accepted', status: 'accepted' }
+      : { ...baseSuccess, kind: 'rejected', status: 'rejected' };
   }
 
   /**
