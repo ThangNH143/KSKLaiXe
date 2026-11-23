@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S6 — Mock API server**
-- Bước kế tiếp: **S7 — GKSK client (login, push, status, retry)**
+- Bước đã xong: **S7 — GKSK client (login, push, status, retry)**
+- Bước kế tiếp: **S8 — DB (MSSQL `gksk_*` & Repository Interface)**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,54 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S7] GKSK client (login, push, status, retry) — 2026-11-23 — Antigravity
+### Đã làm
+- Tạo `server/src/gksk/errors.ts`:
+  - Định nghĩa phân loại kết quả `{ kind: 'accepted' | 'rejected' | 'transient' | 'config', ... }` (`GkskSendResult`, `GkskLoginResult`, `GkskStatusResult`, `GkskTimelineEvent`).
+  - Cài đặt `normalizeServerIssues()`, `parseLenientPushData()` (bỏ qua trường lạ, chuẩn hóa thiếu `errors`/`warnings` thành `[]`), `parseRetryAfterSeconds()` (kẹp `1..120` giây) và `classifyHttpFailure()` theo đúng bảng `docs/API-CONTRACT.md §8`.
+- Tạo `server/src/gksk/retry.ts`:
+  - Cài đặt `withRetry(target, initialEnvelope, options)` theo đúng chính sách `docs/API-CONTRACT.md §8`:
+    - Tối đa 3 lần thử lại với khoảng chờ `5s → 15s → 45s` (`RETRY_DELAYS_MS = [5000, 15000, 45000]`); gặp HTTP 429 chờ theo `Retry-After` (tối đa 120s).
+    - **Trước mỗi lần gửi lại sau timeout / lỗi mạng / 5xx bắt buộc gọi `status(msg_id)` trước**: nếu `status` trả HTTP 200 (`accepted` hoặc `rejected`) thì thu hồi kết quả luôn (`recoveredViaStatus = true`), tuyệt đối không gọi `push` lần 2; nếu `status` trả HTTP 404 mới gọi `push` lại với **cùng `msg_id`, `send_datetime`, `data`, `signature`**.
+    - Gặp HTTP 403 (`CM_PERMISSION_DENY`): xóa cache token, tự động gọi `login()` lại đúng 1 lần rồi thử lại; nếu vẫn 403 thì dừng và trả `kind: 'config'`.
+    - Gặp HTTP 409 (trùng `msg_id` với CSYT khác): tự sinh `msg_id` mới + ký lại gói tin rồi thử lại đúng 1 lần.
+    - Không retry khi giấy bị `rejected` (HTTP 200), lỗi envelope HTTP 400, login sai, hoặc `header.ref_msg_id` lệch.
+- Tạo `server/src/gksk/client.ts` (`GkskClient` & `createGkskClient`):
+  - `login()`: gọi `POST /api/auth/login`, cache token tới `now + duration - 5 phút` (`TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000`); từ chối không retry khi sai tài khoản/mật khẩu hoặc thiếu `data.token`.
+  - `pushOnce(envelope)` & `push(envelope)`: timeout bằng `AbortController`, giữ đúng thứ tự 8 khóa `header`, kiểm tra chặt `header.ref_msg_id === envelope.header.msg_id` (lệch → lỗi bất thường `isAbnormal = true`, không ghi đè kết quả), parse khoan dung `data`.
+  - `status(msgId)`: gọi `GET /api/platform/gksk-lai-xe/status?msg_id=...`, parse khoan dung cấu trúc `{ code, message, data }` (không có `header`), hỗ trợ tự đăng nhập lại 1 lần nếu gặp HTTP 403.
+  - Ghi log qua `pino` chỉ chứa siêu dữ liệu an toàn (`msgId`, `senderId`, `httpStatus`, `resCode`, `durationMinutes`), tuyệt đối không log token, `Authorization`, mật khẩu hay dữ liệu cá nhân (PII).
+- Viết bộ kiểm thử tích hợp & đơn vị `server/src/gksk/client.test.ts` (17 ca kiểm thử) bao phủ toàn bộ 13 kịch bản ở `docs/TEST-PLAN.md §3.3` với Mock Server (dùng đồng hồ/`sleep` giả để chạy nhanh) + spy logger khẳng định không bao giờ log token/`Authorization`/PII.
+- Viết và chạy script kiểm chứng `scripts/verify-S7.ts` thực thi 6 tình huống retry/timeout/status-recovery/429/403 trên Mock Server và xuất nhật ký dòng thời gian (`timeline`) ra `docs/evidence/S7/retry-timeline-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server: `server/src/gksk/errors.ts`, `server/src/gksk/retry.ts`, `server/src/gksk/client.ts`, `server/src/gksk/client.test.ts`.
+- Cấu hình build kiểu cho Mock API phục vụ test: `tools/mock-gksk-api/package.json`, `tools/mock-gksk-api/tsconfig.json`, `package.json`.
+- Kiểm chứng: `scripts/verify-S7.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S7/`)
+- `docs/evidence/S7/retry-timeline-report.md`: biên bản kiểm chứng 6 tình huống (`S7-01` → `S7-06`) kèm bảng `result.timeline` từng bước, bảng đối chiếu gói tin `POST /push` (chứng minh giữ nguyên 100% `msg_id`, `send_datetime`, `data`, `signature` khi retry), nhật ký request tại Mock Server, kiểm tra 18 dòng log JSON `pino` (0 lộ token/`Authorization`/PII) và quét tĩnh 0 lệnh `console.log` trong `server/src`.
+- `docs/evidence/S7/verify-output.txt`: bản sao log báo cáo kiểm chứng S7.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 14/14 test files, 208/208 tests (`shared`: 145, `server`: 52 [17 client + 5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1, `mock-gksk-api`: 10).
+- Độ phủ `server/src/gksk/` (`v8`): **94.81% Lines** (`client.ts`: 91.94%, `retry.ts`: 97.04%, `errors.ts`: 100%, `envelope.ts`: 100%, `signature.ts`: 100%, `xml.ts`: 100%), **100% Functions** — vượt ngưỡng ≥ 90% của `TEST-PLAN.md §7`.
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S7.ts`: PASS 100% (6/6 scenarios).
+
+### Cổng qua bước
+- ✔ Mọi kịch bản ở `TEST-PLAN.md §3.3` (13/13 kịch bản) đều xanh.
+- ✔ Có `docs/evidence/S7/retry-timeline-report.md`.
+- ✔ Test spy logger khẳng định **không** log token / `Authorization` / mật khẩu / PII.
+- ✔ Quét `console.log` trong `server/src` rỗng (0 kết quả).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Bổ sung trường `timeline: GkskTimelineEvent[]` và `recoveredViaStatus: boolean` trong `GkskSendResult` cùng tùy chọn `checkStatusFirst?: boolean` trong `WithRetryOptions` để hỗ trợ trực tiếp cho dịch vụ gửi (`sendService`) ở bước S9 và xuất báo cáo dòng thời gian ở S7.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S8 — DB (MSSQL `gksk_*` & Repository Interface)** (`server/src/db/{types,inMemoryRepo,mssqlRepo,connection}.ts`, `server/src/db/migrations/001_init.sql`, 100% bảng có tiền tố `gksk_`, 100% truy vấn dùng `.input()` tham số hóa, `npm test` mặc định chỉ chạy trên `InMemoryRepositories`).
 
 ## [S6] Mock API server — 2026-11-23 — Antigravity
 ### Đã làm

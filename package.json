@@ -16,8 +16,8 @@
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w @gksk/server\" \"npm run dev -w @gksk/client\"",
     "dev:mock": "concurrently -n mock,server,client -c yellow,cyan,magenta \"npm run dev -w @gksk/mock-gksk-api\" \"npm run dev -w @gksk/server\" \"npm run dev -w @gksk/client\"",
     "lint": "eslint .",
-    "typecheck": "npm run build -w @gksk/shared && npm run typecheck --workspaces --if-present",
-    "test": "npm run build -w @gksk/shared && npm run test --workspaces --if-present",
+    "typecheck": "npm run build -w @gksk/shared && npm run build -w @gksk/mock-gksk-api && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @gksk/shared && npm run build -w @gksk/mock-gksk-api && npm run test --workspaces --if-present",
     "build": "npm run build -w @gksk/shared && npm run build -w @gksk/server && npm run build -w @gksk/client",
     "format:check": "prettier --check ."
   },
