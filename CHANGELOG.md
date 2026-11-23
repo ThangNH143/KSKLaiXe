@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S8 — DB (MSSQL `gksk_*` & Repository Interface)**
-- Bước kế tiếp: **S9 — Dịch vụ gửi (máy trạng thái) và gửi hàng loạt**
+- Bước đã xong: **S9 — Dịch vụ gửi (máy trạng thái) và gửi hàng loạt**
+- Bước kế tiếp: **S10 — API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,54 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S9] Dịch vụ gửi (máy trạng thái) và gửi hàng loạt — 2026-11-23 — Antigravity
+### Đã làm
+- Tạo `server/src/services/sendService.ts` (`SendService`, `createSendService`, `computeCertificatePayload`, `toSafeCertificateSummary`, `SendServiceError`) theo đúng `docs/ARCHITECTURE.md §6`:
+  - `sendCertificate(id)`:
+    1. Kiểm tra lại dữ liệu bằng `validateRecord(cert.fields, { facilityId, today })` (tính `today` theo giờ Việt Nam `UTC+7` hoặc ghi đè khi test); nếu có lỗi chặn (`hasBlockingErrors(issues)`) thì cập nhật trạng thái giấy sang `invalid` và **không** gọi API.
+    2. Dựng XML (`buildGkskXml`) → Base64 (`toBase64Utf8`) → tính `data_sha256 = SHA256_UPPER(base64Data.trim())`; tra cứu submission chưa có kết quả (`result_status === null`) có cùng `data_sha256` qua `findPendingByCertificateAndSha` để tái sử dụng `msg_id` & `send_datetime` cũ, hoặc tạo submission mới với `newMsgId` khi dữ liệu đã thay đổi.
+    3. Chuyển trạng thái giấy sang `sending`; nếu là lần gửi lại từ submission dở dang (`attempts > 0`), tự động bật `checkStatusFirst: true` để gọi `GET /status` trước khi `POST /push`.
+    4. Đẩy gói tin qua `gkskClient.push(envelope)` (`withRetry`), ghi nhận đầy đủ `attempts`, `http_status`, `res_code`, `result_status` (`accepted` | `rejected` | `null`), `server_submission_id`, `server_certificate_id`, `errors_json`, `warnings_json`, `last_error` (không chứa dữ liệu cá nhân/PII) và `finished_at`.
+    5. Cập nhật `gksk_certificates.status` (`accepted | rejected | error`), bọc `try / catch` để đảm bảo không bao giờ để giấy bị kẹt ở trạng thái `sending`.
+  - `refreshSubmission(submissionId)`: gọi `gkskClient.status(submission.msgId)` để đồng bộ kết quả (`accepted`/`rejected` hoặc `404`/`error`) vào cả `gksk_submissions` và `gksk_certificates`.
+- Tạo `server/src/services/jobService.ts` (`JobService`, `createJobService`) quản lý hàng đợi gửi hàng loạt trong bộ nhớ:
+  - Chạy tối đa 2 worker song song (`MAX_BATCH_CONCURRENCY = 2`).
+  - Điều tốc tuần tự qua cổng `pacerChain` với khoảng nghỉ tối thiểu `BATCH_SEND_INTERVAL_MS = 250` ms giữa hai lần phát lệnh gửi liên tiếp (tối đa `240 gói/phút < 300 gói/phút` ở mọi cửa sổ 60 giây).
+  - Tự động tạm dừng toàn bộ hàng đợi (`pauseQueue`) theo thời gian `Retry-After` ngay khi bất kỳ worker nào gặp phản hồi HTTP 429.
+- Tạo `server/src/routes/send.ts` (`createSendRouter`) và gắn vào `server/src/app.ts` (đảm bảo `routes` chỉ gọi `services`):
+  - `POST /api/certificates/:id/send`
+  - `POST /api/send`
+  - `GET /api/jobs/:jobId`
+  - `POST /api/submissions/:id/refresh`
+- Viết bộ kiểm thử tích hợp `server/src/services/send.test.ts` (9 ca kiểm thử) với Mock Server: gửi đơn hợp lệ (`2.1`), chặn giấy `invalid` (0 request tới Mock), retry lỗi mạng giữ nguyên `msg_id` & idempotent (`2.2`), cập nhật dữ liệu cùng `SO` sinh `msg_id` mới ghi đè giữ cùng `certificate_id` (`2.3`), cảnh báo không chặn (`2.4`) & lưu `errors_json` khi `rejected` + tra lại `refresh`, gửi batch 25 giấy (21 `accepted` + 3 `rejected` + 1 `error`, 0 giấy kẹt `sending`, spy logger 0 lộ PII, `recoverOnStartup`), tạm dừng hàng đợi khi gặp HTTP 429, kiểm chứng giới hạn tốc độ batch 400 giấy với đồng hồ giả (`≤ 240 gói/phút < 300 gói/phút`), và kiểm tra mã lỗi HTTP `400`/`404`.
+- Viết và chạy script kiểm chứng `scripts/verify-S9.ts` thực thi thật kịch bản Postman `2.1–2.4` và batch 25 giấy qua Mock Server + App Server, ghi nhật ký tiến độ polling và lịch sử submissions ra `docs/evidence/S9/batch-send-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server Services & Routes: `server/src/services/sendService.ts`, `server/src/services/jobService.ts`, `server/src/routes/send.ts`, `server/src/app.ts`, `server/src/services/send.test.ts`.
+- Kiểm chứng: `scripts/verify-S9.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S9/`)
+- `docs/evidence/S9/batch-send-report.md`: biên bản kiểm chứng kịch bản Postman `2.1–2.4` qua API của app, bảng nhật ký 15 lần polling `GET /api/jobs/:jobId` cho batch 25 giấy (21 `accepted`, 3 `rejected` có `errors_json`, 1 `error`), kết quả `POST /api/submissions/:id/refresh`, gửi lại giấy `#25` giữ nguyên 100% `msg_id`, và kiểm toán 85 dòng log JSON `pino` (0 rò rỉ PII/token).
+- `docs/evidence/S9/verify-output.txt`: bản sao log báo cáo kiểm chứng S9.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 16/16 test files, 227/227 tests (`shared`: 145, `server`: 71 [9 send/job + 10 db repo + 17 client + 5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1, `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S9.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Kịch bản Postman 2.1–2.4 tái hiện qua API của app.
+- ✔ Có `docs/evidence/S9/batch-send-report.md` (và `docs/evidence/S9/verify-output.txt`).
+- ✔ Không log dữ liệu cá nhân (test spy logger xác nhận 0 lộ PII/token).
+- ✔ Kết quả `rejected` được lưu đầy đủ trong `errors_json`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Bổ sung `toSafeCertificateSummary()` trong `sendService.ts` để phản hồi của các endpoint gửi/refresh không trả thừa `fields`/`fieldsJson` chứa 4 trường nhạy cảm.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S10 — API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát** (`server/src/services/{certificateService,exportService}.ts`, `server/src/routes/certificates.ts`, `server/src/middleware/errorHandler.ts`).
 
 ## [S8] DB (MSSQL `gksk_*` & Repository Interface) — 2026-11-23 — Antigravity
 ### Đã làm
