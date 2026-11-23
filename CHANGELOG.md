@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S3 — `shared`: chuẩn hóa và kiểm tra dữ liệu**
-- Bước kế tiếp: **S4 — Server: dựng XML**
+- Bước đã xong: **S4 — Server: dựng XML**
+- Bước kế tiếp: **S5 — Server: `msg_id`, envelope, chữ ký**
 - Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,48 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S4] Server: dựng XML — 2026-11-23 — Antigravity
+### Đã làm
+- Cài đặt devDependency `fast-xml-parser` cho workspace `@gksk/server` để kiểm thử round-trip và kiểm định cú pháp XML.
+- Tạo `server/src/gksk/xml.ts`:
+  - `buildGkskXml(record)`: hàm thuần dựng chuỗi XML chuẩn UTF-8 theo đúng `docs/DATA-SPEC.md §4`:
+    - Khai báo `<?xml version="1.0" encoding="UTF-8"?>`, thẻ gốc `<root>`, không BOM (`0xFEFF` / `0xEF 0xBB 0xBF`), không `DOCTYPE`, không comment (`<!--`), không `<Signature>`, không thẻ ngoài chuẩn (`UUID`, `STATUS`, `SIGNDATA`).
+    - Xuất đủ **25 thẻ** theo đúng thứ tự bảng BHXH (`FIELD_ORDER` từ `@gksk/shared`: `SO`, `NGAYKHAM`, `HOTEN`, `GIOITINHVAL`… kết thúc `STATE`).
+    - Thẻ rỗng xuất tường minh dạng `<TAG></TAG>`, thụt lề 2 khoảng trắng, kết thúc dòng `\n`.
+    - Escape đầy đủ 5 ký tự đặc biệt XML (`& < > " '`) qua `escapeXmlText()` và xóa ký tự điều khiển cấm của XML 1.0 (`\x00-\x08`, `\x0B`, `\x0C`, `\x0E-\x1F`, `\uFFFE`, `\uFFFF`) qua `stripInvalidXmlChars()` (giữ `\t`, `\n`, `\r`).
+    - Chặn quá kích thước 1 MB (`MAX_XML_BYTES = 1024 * 1024`) bằng `XmlSizeLimitError` (không đưa dữ liệu hồ sơ/PII vào thông điệp lỗi).
+  - `toBase64Utf8(xml)`: mã hóa chuỗi XML sang Base64 chuẩn (UTF-8, có padding `=`, không xuống dòng).
+- Viết bộ unit test `server/src/gksk/xml.test.ts` (9 ca kiểm thử): snapshot XML bản ghi mẫu (`DATA-SPEC.md §6`), 25 thẻ đúng thứ tự BHXH và `<TAG></TAG>`, round-trip bằng `fast-xml-parser` (kể cả `& < > " '`, tiếng Việt có dấu, xuống dòng `\n` trong `LYDO`), không chứa BOM/`DOCTYPE`/comment/`Signature`/thẻ lạ, chống XML injection, tính xác định tuyệt đối, lọc ký tự điều khiển XML 1.0, chặn > 1 MB không lộ PII, và giải mã Base64 khớp từng byte UTF-8 (kèm Golden Vector `<root><SO>TEST.75001.1</SO></root>`).
+- Viết và chạy script kiểm chứng độc lập `scripts/verify-S4.ts` sinh 2 file XML thật (`sample-gksk.xml`, `special-chars-gksk.xml`) và đối chiếu 25/25 thẻ với `docs/reference/gksk_mau_ky_so_root.xml`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server: `server/src/gksk/xml.ts`, `server/src/gksk/xml.test.ts`, `server/package.json`.
+- Gốc: `package-lock.json`.
+- Kiểm chứng: `scripts/verify-S4.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S4/`)
+- `docs/evidence/S4/sample-gksk.xml`: file XML mẫu hoàn chỉnh (947 byte UTF-8, không BOM, 25 thẻ đúng thứ tự BHXH, 3 thẻ rỗng `<NGAYKHAMLAI></NGAYKHAMLAI>`, `<LYDO></LYDO>`, `<TINHTRANGBENH></TINHTRANGBENH>`).
+- `docs/evidence/S4/special-chars-gksk.xml`: file XML chứa tiếng Việt có dấu, `& < > " '`, xuống dòng trong `LYDO`, và đã lọc ký tự điều khiển cấm `\x00`, `\x07`, `\x1F` (1328 byte UTF-8).
+- `docs/evidence/S4/verify-output.txt`: biên bản kiểm chứng tự động các quy tắc XML 1.0, round-trip `fast-xml-parser`, Base64 UTF-8 + Golden Vector, và bảng đối chiếu 25/25 thẻ dữ liệu với `docs/reference/gksk_mau_ky_so_root.xml`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`).
+- `npm.cmd test`: PASS — 10/10 test files, 170/170 tests (`shared`: 145, `server`: 24 [9 xml + 11 config + 3 logger + 1 app], `client`: 1).
+- Độ phủ `server/src/gksk/xml.ts` (`v8`): **100% Lines**, **100% Statements**, **100% Functions**, 83.33% Branches (vượt ngưỡng ≥ 90% dòng).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S4.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 170/170 PASS, 0 skip/only).
+- ✔ Có đủ `docs/evidence/S4/sample-gksk.xml`, `docs/evidence/S4/special-chars-gksk.xml` và `docs/evidence/S4/verify-output.txt`.
+- ✔ Đã nhúng toàn bộ nội dung `sample-gksk.xml` trong báo cáo bàn giao để người dùng kiểm tra trực tiếp.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Cài `fast-xml-parser` vào `devDependencies` của `@gksk/server` vì `server/src/gksk/xml.ts` tự dựng XML thuần không phụ thuộc thư viện ngoài; `fast-xml-parser` chỉ dùng cho kiểm thử round-trip và script kiểm chứng.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S5 — Server: `msg_id`, envelope, chữ ký** (`server/src/gksk/{envelope,signature}.ts`, đối chiếu Golden Vector ở `docs/API-CONTRACT.md §5`, không gọi `Date.now()` trực tiếp trong logic).
 
 ## [S3] `shared`: chuẩn hóa và kiểm tra dữ liệu — 2026-11-23 — Antigravity
 ### Đã làm

@@ -1,0 +1,56 @@
+================================================================================
+GKSKLaiXe — KIỂM CHỨNG BƯỚC S4: DỰNG XML GKSK LÁI XE (25 THẺ BHXH)
+================================================================================
+Thời điểm chạy : 2026-11-23T10:35:52.977Z
+File mẫu 1     : docs/evidence/S4/sample-gksk.xml (947 byte UTF-8, Base64 1264 ký tự)
+File mẫu 2     : docs/evidence/S4/special-chars-gksk.xml (1328 byte UTF-8, Base64 1772 ký tự)
+File đối chiếu : docs/reference/gksk_mau_ky_so_root.xml
+
+1. KIỂM TRA CÁC RÀNG BUỘC GIAO THỨC & XML 1.0
+   [PASS] Khai báo chuẩn: <?xml version="1.0" encoding="UTF-8"?>, gốc <root>
+   [PASS] Không có UTF-8 BOM (0xEF 0xBB 0xBF / 0xFEFF) ở cả 2 file XML
+   [PASS] Không có DOCTYPE, không có comment (<!--), không có <Signature>, không có thẻ ngoài chuẩn (UUID/STATUS/SIGNDATA)
+   [PASS] Thẻ rỗng xuất đúng dạng <TAG></TAG> (NGAYKHAMLAI, LYDO, TINHTRANGBENH)
+   [PASS] Tính xác định (determinism): 2 lần gọi buildGkskXml cho chuỗi giống hệt nhau
+   [PASS] XMLValidator.validate() hợp lệ 100% cho cả 2 file
+   [PASS] Round-trip fast-xml-parser: 25/25 thẻ khớp chính xác (kể cả & < > " ', tiếng Việt có dấu, \n trong LYDO, lọc \x00/\x07/\x1F)
+   [PASS] toBase64Utf8() giải mã khớp chính xác byte UTF-8 cho cả 2 file
+   [PASS] Golden Vector Base64 (<root><SO>TEST.75001.1</SO></root>): PHJvb3Q+PFNPPlRFU1QuNzUwMDEuMTwvU08+PC9yb290Pg==
+
+2. ĐỐI CHIẾU 25 THẺ DỮ LIỆU VỚI docs/reference/gksk_mau_ky_so_root.xml
+   - Số thẻ dữ liệu trong sample-gksk.xml          : 25 (đúng thứ tự BHXH DATA-SPEC.md §1)
+   - Số thẻ dữ liệu trong gksk_mau_ky_so_root.xml  : 25 (đã loại trừ UUID, STATUS, Signature)
+   - Thẻ thiếu so với file mẫu gốc                 : 0
+   - Thẻ thừa so với file mẫu gốc                  : 0
+   - Ghi chú: File mẫu gốc gksk_mau_ky_so_root.xml sắp xếp theo bảng Sở, còn sample-gksk.xml
+     xuất đúng thứ tự bảng BHXH PL2 CV 3829 (bắt đầu SO, NGAYKHAM, HOTEN ... kết thúc STATE).
+
+   STT | Thẻ trong sample-gksk.xml (thứ tự BHXH) | Có trong gksk_mau_ky_so_root.xml (vị trí)
+   ----+-----------------------------------------+------------------------------------------
+     1 | SO                                      | CÓ (vị trí #1 trong file mẫu Sở)
+     2 | NGAYKHAM                                | CÓ (vị trí #12 trong file mẫu Sở)
+     3 | HOTEN                                   | CÓ (vị trí #2 trong file mẫu Sở)
+     4 | GIOITINHVAL                             | CÓ (vị trí #4 trong file mẫu Sở)
+     5 | NGAYSINH                                | CÓ (vị trí #3 trong file mẫu Sở)
+     6 | DIACHITHUONGTRU                         | CÓ (vị trí #8 trong file mẫu Sở)
+     7 | MATINH_THUONGTRU                        | CÓ (vị trí #9 trong file mẫu Sở)
+     8 | MAHUYEN_THUONGTRU                       | CÓ (vị trí #10 trong file mẫu Sở)
+     9 | MAXA_THUONGTRU                          | CÓ (vị trí #11 trong file mẫu Sở)
+    10 | SOCMND_PASSPORT                         | CÓ (vị trí #5 trong file mẫu Sở)
+    11 | NGAYTHANGNAMCAP                         | CÓ (vị trí #6 trong file mẫu Sở)
+    12 | NOICAP                                  | CÓ (vị trí #7 trong file mẫu Sở)
+    13 | HANGBANGLAI                             | CÓ (vị trí #17 trong file mẫu Sở)
+    14 | IDBENHVIEN                              | CÓ (vị trí #23 trong file mẫu Sở)
+    15 | BENHVIEN                                | CÓ (vị trí #24 trong file mẫu Sở)
+    16 | NGAYKETLUAN                             | CÓ (vị trí #18 trong file mẫu Sở)
+    17 | NONGDOCON                               | CÓ (vị trí #13 trong file mẫu Sở)
+    18 | DVINONGDOCON                            | CÓ (vị trí #14 trong file mẫu Sở)
+    19 | MATUY                                   | CÓ (vị trí #15 trong file mẫu Sở)
+    20 | BACSYKETLUAN                            | CÓ (vị trí #19 trong file mẫu Sở)
+    21 | KETLUAN                                 | CÓ (vị trí #16 trong file mẫu Sở)
+    22 | NGAYKHAMLAI                             | CÓ (vị trí #20 trong file mẫu Sở)
+    23 | LYDO                                    | CÓ (vị trí #21 trong file mẫu Sở)
+    24 | TINHTRANGBENH                           | CÓ (vị trí #22 trong file mẫu Sở)
+    25 | STATE                                   | CÓ (vị trí #25 trong file mẫu Sở)
+
+KẾT LUẬN: PASS 100% — ĐẠT ĐỦ ĐIỀU KIỆN QUA CỔNG BƯỚC S4.
