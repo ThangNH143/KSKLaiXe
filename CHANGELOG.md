@@ -1,0 +1,93 @@
+# CHANGELOG — GKSKLaiXe
+
+> Nhật ký cho **mọi Agent và người** cùng nắm tình trạng dự án. Mới nhất ở trên cùng.
+> Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
+
+## Trạng thái hiện tại
+- Bước đã xong: **S0 — Khởi tạo monorepo**
+- Bước kế tiếp: **S1 — Cấu hình và logger**
+- Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
+
+## Thay đổi tài liệu
+| Ngày | File | Thay đổi | Lý do |
+|---|---|---|---|
+| 2026-11-23 | `docs/STEP-PROMPTS.md` | Tạo bộ 20 prompt copy-paste cho từng bước từ `S0` đến `S19` kèm khuyến nghị Model Gemini 4 (`Neon Medium`, `Neon High`, `Argon Medium`, `Argon High` — không dùng Carbon) | Để người dùng copy-paste trực tiếp vào từng phiên chat theo đúng chuẩn quy trình |
+| 2026-11-23 | `AGENTS.md`, `.agents/skills/{gksk-step-runner,gksk-protocol-guard}/SKILL.md` | Tạo Workspace Rule tự động nạp `AGENTS.md` ở thư mục gốc và 2 Workspace Skills (`gksk-step-runner`, `gksk-protocol-guard`) để mọi phiên làm việc của Agent/Subagent đều tự động tuân thủ quy trình 1 bước/1 lần, sinh bằng chứng `docs/evidence/S<n>/`, báo cáo 5 mục, an toàn MSSQL `gksk_*` và chuẩn giao thức XML/chữ ký gói tin | Đảm bảo chất lượng thực thi cao nhất qua nhiều phiên làm việc |
+| 2026-11-23 | `docs/IMPLEMENTATION-PLAN.md`, `docs/PROJECT-RULES.md`, `project_context.md` | Bổ sung mục **📸 Đầu ra xác nhận & Bằng chứng bàn giao bắt buộc (`docs/evidence/S<n>/`)** cho toàn bộ 20 bước (`S0`–`S19`) và **Mẫu Báo cáo bàn giao 5 mục bắt buộc**: yêu cầu mỗi bước phải có script kiểm chứng `scripts/verify-S<n>`, sinh file mẫu thực tế (`.xml`, `.json`, `.xlsx`, `.zip`, `.md`) và chụp ảnh màn hình trình duyệt (`*.png`) lưu vào `docs/evidence/S<n>/`; cấm báo cáo hoàn tất suông | Theo yêu cầu của người dùng để nghiệm thu trực quan từng bước bằng ảnh chụp màn hình, file mẫu và script thực tế |
+| 2026-11-23 | `docs/reference/`, `docs/DATA-SPEC.md`, `docs/OPEN-QUESTIONS.md` | Cập nhật tên 3 file ảnh `ksk_laixe_{01,02,03}.webp` và lưu thêm `docs/reference/gksk_mau_ky_so_root.xml`. Chốt thêm Q2 (xuất đủ thẻ, không bỏ thẻ rỗng), Q9 (gốc XML là `<root>`), Q10 (thẻ giới tính trong XML mẫu là `<GIOITINHVAL>`) | Đối chiếu trực tiếp với 3 ảnh BHXH và file XML mẫu người dùng cung cấp |
+| 2026-11-23 | `project_context.md`, `docs/{ARCHITECTURE,DATA-SPEC,IMPLEMENTATION-PLAN,TEST-PLAN,OPEN-QUESTIONS,PROJECT-RULES}.md` | **Tinh chỉnh kiến trúc v1.1 (qua `/grill-me`):** (1) Bỏ hoàn toàn màn hình nhập liệu / form sửa trên web ở giai đoạn hiện tại (`EntryPage`, `CertificateForm`, `react-hook-form`). (2) Quy trình sửa lỗi: sửa trên file Excel (hoặc file Excel đối soát) rồi Import lại — tự động ghi đè thông minh theo `SO` (`overwrite_pending` mặc định chọn, `accepted_unchanged` mặc định bỏ chọn, `accepted_modified` cảnh báo và mặc định bỏ chọn). (3) Lưu cả dòng hợp lệ (`ready`) lẫn dòng lỗi dữ liệu (`invalid`, có `SO`) vào DB để Danh sách đối soát khớp 100% quân số file Excel. (4) Xuất XML: hỗ trợ cả xem trước/tải lẻ `<SO>.xml` và tải gộp `.zip`. (5) Màn hình Danh sách & Đối soát: 4 tab (`Tất cả`, `Chưa đẩy`, `Đã đẩy thành công`, `Cần xử lý`), lọc theo đợt import Excel & ngày, mở ngăn trượt (Drawer) chi tiết chỉ đọc 25 trường + XML + lịch sử gửi, và nút **Xuất Excel đối soát** (23 cột gốc + 6 cột đối soát, có thể sửa dòng lỗi rồi import ngược lại). (6) Đổi CSDL từ SQLite sang **MSSQL** trên server hiện tại với tiền tố bảng `gksk_*` và tách `DbRepositories` interface (`npm test` chạy `InMemoryRepositories` để bảo vệ tuyệt đối MSSQL đang vận hành). (7) Xóa 2 bản sao trùng trong `docs/project_context.md` và `docs/CHANGELOG.md` | Theo yêu cầu người dùng tập trung vào Import Excel, Xuất XML, Đẩy cổng và Kiểm tra/Đối soát trên hạ tầng MSSQL hiện tại |
+| 2026-11-23 | `docs/reference/` | Thêm 3 ảnh `bhxh_pl2_3829_cau_truc_du_lieu_{1,2,3}.png` (bảng "Cấu trúc dữ liệu" của PL2 CV 3829) | Nguồn đối chiếu trường/độ dài từ BHXH |
+| 2026-11-23 | `docs/DATA-SPEC.md` | §1: đổi thứ tự 25 thẻ theo bảng BHXH; thêm cột Max (độ dài) và cột BHXH (không cho null); ghi chú `GIOITINH` vs `GIOITINHVAL`. §2: thêm `LOCAL_FIELD_OVER_SPEC`, `LOCAL_SO_OVER_20`, `LOCAL_SO_FORMAT`, `LOCAL_BHXH_REQUIRED_EMPTY`, `LOCAL_FACILITY_MISMATCH`. §4: ví dụ XML theo thứ tự mới. §5: thứ tự cột template theo §1, bí danh cột `GIOITINH` | Đối chiếu với bảng BHXH |
+| 2026-11-23 | `docs/API-CONTRACT.md` | §9–10: ghi chú độ dài `SO` (BHXH 20 / Sở 30 / ví dụ BHXH 21) và tham chiếu độ dài thẻ cho `GKSK_FIELD_TOO_LONG` | Như trên |
+| 2026-11-23 | `docs/IMPLEMENTATION-PLAN.md` | S2/S3/S4: `maxLength`, `bhxhRequired`, thứ tự BHXH, ca kiểm độ dài sát biên, mã `LOCAL_*` mới | Như trên |
+| 2026-11-23 | `docs/TEST-PLAN.md` | Thêm ca test độ dài/`SO` format/BHXH rỗng; fixtures `alias_gioitinh.xlsx`, `over_length.xlsx`; sửa ca S18 #11 | Như trên |
+| 2026-11-23 | `docs/OPEN-QUESTIONS.md` | Q1 ✅; Q3, Q9 cập nhật; thêm Q10–Q13 | Như trên |
+| 2026-11-23 | `project_context.md` | §4 thêm mục 15–16; §10 cập nhật câu hỏi mở | Như trên |
+| 2026-11-23 | toàn bộ `docs/`, `project_context.md` | Tạo bộ tài liệu khởi đầu v1.0 | Chuẩn bị cho Agent xây dựng webapp |
+
+## Nhật ký bước
+
+### Mẫu mục (sao chép khi làm xong một bước)
+```
+## [S<n>] <tên bước> — <YYYY-MM-DD> — <Agent/người thực hiện>
+### Đã làm
+### Đầu ra (file/đường dẫn/lệnh)
+### Kiểm thử (lệnh + kết quả tóm tắt)
+### Cổng qua bước (từng ô ✔/✘)
+### Quyết định & sai khác so với tài liệu (nếu có)
+### Ghi chú cho Agent sau
+```
+
+## [S0] Khởi tạo monorepo — 2026-11-23 — Antigravity
+### Đã làm
+- Khởi tạo git repository (`git init`) và kiểm tra đầy đủ bộ tài liệu gốc (`docs/`, `project_context.md`, `CHANGELOG.md`).
+- Tạo `package.json` gốc với npm workspaces (`["packages/*", "server", "client", "tools/*"]`), `engines.node >= 20.0.0`, cùng các script gốc: `dev`, `lint`, `typecheck`, `test`, `build`, `format:check`.
+- Cấu hình `tsconfig.base.json` (strict, `noUncheckedIndexedAccess`), ESLint 9 flat config (`eslint.config.js` kèm luật chặn phụ thuộc chéo giữa `shared`, `client`, `server`), Prettier (`.prettierrc`), `.editorconfig`, `.gitignore` (chặn `node_modules/`, `dist/`, `.env`, `coverage/`).
+- Khởi tạo 3 workspace cùng Vitest:
+  - `packages/shared` (`@gksk/shared`): hàm `ping()` + unit test.
+  - `server` (`@gksk/server`): Express 4.x với `GET /api/health` trả `{"ok":true}` + test Supertest.
+  - `client` (`@gksk/client`): React 18 + Vite 6 hiển thị tiêu đề `"GKSKLaiXe — Hệ thống Import Excel, Xuất XML & Đối soát GKSK Lái xe"`, gọi proxy `/api/health` và hiển thị kết quả + test Testing Library.
+- Viết và chạy script kiểm chứng độc lập `scripts/verify-S0.mjs`; khởi chạy `npm run dev` và chụp ảnh màn hình giao diện thực tế.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Gốc: `package.json`, `package-lock.json`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc`, `.editorconfig`, `.gitignore`.
+- Shared: `packages/shared/{package.json,tsconfig.json,tsconfig.build.json,vitest.config.ts}`, `packages/shared/src/{index.ts,index.test.ts}`.
+- Server: `server/{package.json,tsconfig.json,tsconfig.build.json,vitest.config.ts}`, `server/src/{index.ts,app.ts,app.test.ts}`, `server/src/routes/health.ts`.
+- Client: `client/{package.json,tsconfig.json,vite.config.ts,vitest.config.ts,index.html}`, `client/src/{main.tsx,App.tsx,App.css,App.test.tsx,testSetup.ts}`.
+- Kiểm chứng: `scripts/verify-S0.mjs`.
+
+### Bằng chứng bàn giao (`docs/evidence/S0/`)
+- `docs/evidence/S0/verify-output.txt`: toàn bộ log chạy `lint`, `typecheck`, `test`, `build`, `git check-ignore -v .env` và kiểm tra trực tiếp `GET http://127.0.0.1:3099/api/health` → HTTP 200 `{"ok":true}`.
+- `docs/evidence/S0/client-home.png`: ảnh chụp màn hình trình duyệt tại `http://127.0.0.1:5173/` hiển thị tiêu đề hệ thống và trạng thái `Kết nối /api/health: Thành công ({"ok": true}) · shared: pong` (0 console errors).
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm run lint`: PASS (0 errors, 0 warnings).
+- `npm run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`).
+- `npm test`: PASS — 3/3 test files, 3/3 tests (`shared`: 1, `server` Supertest: 1, `client` RTL: 1).
+- `npm run build`: PASS (`shared` tsc, `server` tsc, `client` Vite bundle).
+- `node scripts/verify-S0.mjs`: PASS toàn bộ 6 mục kiểm chứng.
+
+### Cổng qua bước
+- ✔ Build sạch từ máy mới (`npm install` & `npm run build` thành công).
+- ✔ `.gitignore` chặn `.env` (xác nhận bằng `git check-ignore -v .env` → `.gitignore:9:.env`).
+- ✔ Có đủ ảnh `docs/evidence/S0/client-home.png` và `docs/evidence/S0/verify-output.txt`.
+- ✔ `CHANGELOG.md` đã ghi S0.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Nâng `vitest` lên `^3.0.5` và hoist `vite@^6.0.5` ở root `package.json` để tránh xung đột kiểu `PluginOption` giữa Vite 5 và Vite 6 trong monorepo.
+
+### Ghi chú cho Agent sau
+- Khi chạy lệnh npm trên PowerShell Windows có ExecutionPolicy Restricted, dùng `npm.cmd`.
+- Đã sẵn sàng sang bước **S1 — Cấu hình và logger** (`server/src/config.ts`, `server/src/logger.ts`, `.env.example`).
+
+### [Tinh chỉnh v1.1] Lược bỏ màn hình nhập liệu, tập trung Import Excel / Xuất XML / Đẩy cổng & Đối soát trên MSSQL — 2026-11-23
+- Đã cập nhật đồng bộ: `project_context.md`, `CHANGELOG.md`, `docs/{ARCHITECTURE,DATA-SPEC,IMPLEMENTATION-PLAN,TEST-PLAN,OPEN-QUESTIONS,PROJECT-RULES}.md`.
+- Đã đóng thêm các câu hỏi mở: Q3 (không cần dropdown trên form v1), Q4 (xuất ZIP nhiều XML), Q7 (dùng MSSQL với tiền tố bảng `gksk_`), Q12 (không tự sinh `SO`, lấy từ Excel).
+- Đã xóa 2 file bản sao dư thừa `docs/project_context.md` và `docs/CHANGELOG.md`.
+- Sẵn sàng bắt đầu từ **S0 — Khởi tạo monorepo**.
+
+### [Khởi tạo] Bộ tài liệu — 2026-11-23
+- Đã tạo: `project_context.md`, `docs/{IMPLEMENTATION-PLAN,PROJECT-RULES,ARCHITECTURE,DATA-SPEC,API-CONTRACT,TEST-PLAN,OPEN-QUESTIONS}.md`.
+- Đã chép tài liệu gốc vào `docs/reference/` (đặc tả API v1.0.1, Postman collection + environment, hướng dẫn Postman, `tao_goi_tin_gksk.js`).
+- Golden vector chữ ký gói tin đã tính bằng chính thuật toán của `tao_goi_tin_gksk.js` (Node 22) — xem `API-CONTRACT §5`.
+- Chưa có mã nguồn. Bắt đầu từ **S0**.

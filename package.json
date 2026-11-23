@@ -1,0 +1,39 @@
+{
+  "name": "gksk-laixe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "server",
+    "client",
+    "tools/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev -w @gksk/server\" \"npm run dev -w @gksk/client\"",
+    "lint": "eslint .",
+    "typecheck": "npm run build -w @gksk/shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @gksk/shared && npm run test --workspaces --if-present",
+    "build": "npm run build -w @gksk/shared && npm run build -w @gksk/server && npm run build -w @gksk/client",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0",
+    "vite": "^6.0.5",
+    "vitest": "^3.0.5"
+  }
+}
