@@ -38,6 +38,23 @@ export default tseslint.config(
     },
   },
   {
+    files: ['tools/mock-gksk-api/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@gksk/server', '@gksk/client', '**/server/**', '**/client/**'],
+              message:
+                'tools/mock-gksk-api không được dùng chung code với server hoặc client (chỉ dùng @gksk/shared).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['client/**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2022,

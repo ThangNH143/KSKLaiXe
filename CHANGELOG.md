@@ -4,9 +4,9 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S5 — Server: `msg_id`, envelope, chữ ký**
-- Bước kế tiếp: **S6 — Mock API server**
-- Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
+- Bước đã xong: **S6 — Mock API server**
+- Bước kế tiếp: **S7 — GKSK client (login, push, status, retry)**
+- Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
@@ -37,6 +37,56 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S6] Mock API server — 2026-11-23 — Antigravity
+### Đã làm
+- Khởi tạo workspace độc lập `tools/mock-gksk-api` (`@gksk/mock-gksk-api`), chỉ import danh sách đặc tả thẻ từ `@gksk/shared` và hoàn toàn không dùng chung code với `server/` (cấu hình thêm luật `no-restricted-imports` trong `eslint.config.js` để khóa ranh giới kiến trúc).
+- Cấu hình script `npm run dev:mock` tại `package.json` gốc chạy đồng thời `mock`, `server`, `client`.
+- Cài đặt `tools/mock-gksk-api/src/app.ts` (`createMockGkskApp`) và `tools/mock-gksk-api/src/index.ts` theo đúng `docs/API-CONTRACT.md §1–§12`:
+  - `POST /api/auth/login`: kiểm tra tài khoản CSYT giả lập (`75001`, `75002`, hoặc từ biến môi trường `MOCK_USERNAME`/`MOCK_PASSWORD`), trả `header.res_code = "CM_SUCCESS"` + `data.token` (`duration = 720`, `refresh_duration = 1440`); từ chối HTTP 401 (`data: null`) khi sai mật khẩu.
+  - `POST /api/platform/gksk-lai-xe/push`:
+    - Kiểm tra HTTP header `service-type: 100` (thiếu/sai → HTTP 400 `CM_INVALID_REQUEST`), `Authorization: Bearer <token>` và vai trò CSYT (sai/thiếu → HTTP 403 `CM_PERMISSION_DENY`).
+    - Kiểm tra đầy đủ cấu trúc envelope (`version`, `sender_id`, `receiver_id = "TTYQG"`, `txn_type = "sync_gksk_lai_xe"`, `msg_type = "101"`, `data_type`, `send_datetime`, `msg_id` khớp regex `<sender_id> + YYMMDD + UUIDv4`, `signature` khác rỗng → thiếu trả HTTP 400 `PS_DS_RSA_SIGNATURE_MISSING`).
+    - Hỗ trợ cờ `MOCK_VERIFY_SIGNATURE=1` kiểm tra chữ ký RSA 2048-bit thật bằng public key (sai → HTTP 400 `PS_DS_RSA_SIGNATURE_INVALID`).
+    - Trả HTTP 409 `CM_INVALID_REQUEST` nếu `msg_id` đã được CSYT khác sử dụng.
+    - Xử lý Idempotent theo `msg_id` của cùng CSYT (kịch bản 2.2): trả lại đúng `submission_id` và `certificate_id` của lần gửi đầu.
+    - Giải mã Base64, kiểm tra giới hạn 1 MB, chặn `DOCTYPE`/`ENTITY`, kiểm tra cú pháp XML & gốc `<root>` có thẻ `<SO>`, áp dụng đầy đủ 9 mã từ chối ở `API-CONTRACT.md §9` (trả HTTP 200 `PS_SYNC_SUCCESS` với `data.status = "rejected"`) và các mã cảnh báo ở `§10` (`GKSK_UNSIGNED`, `GKSK_UNKNOWN_TAG`, `GKSK_ID_INVALID`, `GKSK_KETLUAN_UNKNOWN`, `GKSK_GIOITINH_UNKNOWN`, `GKSK_NONGDOCON_INVALID`, `GKSK_DVINONGDOCON_INVALID`, `GKSK_MATUY_INVALID`, `GKSK_DATE_INVALID`, `GKSK_FIELD_TOO_LONG`, `GKSK_STATE_ADD_EXISTS`).
+    - Ghi đè theo `(facilityId, SO)` khi gửi `msg_id` mới cho cùng `SO` (kịch bản 2.3): tạo `submission_id` mới nhưng giữ nguyên `certificate_id` cũ.
+  - `GET /api/platform/gksk-lai-xe/status?msg_id=...`: trả `{ code: "CM_SUCCESS", message, data }` (**không có `header`**) khớp 100% với `data` lúc push (kịch bản 3.1), hoặc HTTP 404 `{ code: "CM_INVALID_REQUEST", message, data: null }` khi không tìm thấy (kịch bản 3.2).
+  - Endpoint quản trị lỗi `POST /__mock/fail { mode: 'timeout'|'500'|'429'|'403-once'|..., count, retryAfterSec, timeoutMs }`, `POST /__mock/reset`, `GET /__mock/state` để phục vụ kiểm thử retry ở S6 & S7.
+- Viết bộ test tự động `tools/mock-gksk-api/src/app.test.ts` (10 ca kiểm thử) tái hiện toàn bộ kịch bản Postman `1.1 → 4.6`, điều khiển lỗi `/__mock/fail` và verify chữ ký RSA.
+- Viết và chạy script kiểm chứng `scripts/verify-S6.ts` xuất biên bản chi tiết Request/Response của 15 kịch bản ra `docs/evidence/S6/postman-scenarios-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Mock API: `tools/mock-gksk-api/package.json`, `tools/mock-gksk-api/tsconfig.json`, `tools/mock-gksk-api/tsconfig.build.json`, `tools/mock-gksk-api/vitest.config.ts`, `tools/mock-gksk-api/src/app.ts`, `tools/mock-gksk-api/src/index.ts`, `tools/mock-gksk-api/src/app.test.ts`.
+- Gốc: `package.json` (`dev:mock`), `eslint.config.js` (luật cấm import chéo `server/` vào `tools/mock-gksk-api`).
+- Kiểm chứng: `scripts/verify-S6.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S6/`)
+- `docs/evidence/S6/postman-scenarios-report.md`: biên bản kiểm chứng 15/15 kịch bản (`1.1`, `1.2`, `2.1`, `2.2`, `2.3`, `2.4`, `3.1`, `3.2`, `4.1`–`4.5`, `4.6`, `MOCK-429`) kèm bảng tổng hợp và JSON Request/Response thực tế.
+- `docs/evidence/S6/verify-output.txt`: bản sao log báo cáo kiểm chứng S6.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 13/13 test files, 191/191 tests (`shared`: 145, `server`: 35, `client`: 1, `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S6.ts`: PASS 100% (15/15 scenarios).
+
+### Cổng qua bước
+- ✔ 2.2 trả cùng `submission_id`.
+- ✔ 2.3 trả cùng `certificate_id` (và kèm cảnh báo `GKSK_STATE_ADD_EXISTS` khi `STATE=ADD`).
+- ✔ 3.2 → HTTP 404 (không có `header`, `data: null`).
+- ✔ 4.1–4.5 `rejected` trả HTTP 200 (`header.res_code = "PS_SYNC_SUCCESS"`, `data.status = "rejected"`).
+- ✔ 4.6 trả HTTP 400 (`CM_INVALID_REQUEST`).
+- ✔ 429 có header `Retry-After`.
+- ✔ Có `docs/evidence/S6/postman-scenarios-report.md`.
+- ✔ Mock **không** dùng chung code với `server/` (chỉ dùng `@gksk/shared`).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Mở rộng thêm các chế độ giả lập lỗi trong `POST /__mock/fail` (`disconnect-after-save`, `mismatched-ref-msg-id`, `sparse-response`, `400`, `409`) cùng `POST /__mock/reset` và `GET /__mock/state` để phục vụ trực tiếp cho toàn bộ 13 kịch bản kiểm thử retry của bước S7 (`TEST-PLAN.md §3.3`).
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S7 — GKSK client (login, push, status, retry)** (`server/src/gksk/{client,errors,retry}.ts`, kiểm thử đủ 13 kịch bản ở `TEST-PLAN.md §3.3` với Mock Server và xuất `docs/evidence/S7/retry-timeline-report.md`).
 
 ## [S5] Server: `msg_id`, envelope, chữ ký — 2026-11-23 — Antigravity
 ### Đã làm
