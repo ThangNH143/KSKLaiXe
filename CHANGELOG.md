@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S1 — Cấu hình và logger**
-- Bước kế tiếp: **S2 — `shared`: đặc tả trường và kiểu**
+- Bước đã xong: **S2 — `shared`: đặc tả trường và kiểu**
+- Bước kế tiếp: **S3 — `shared`: chuẩn hóa và kiểm tra dữ liệu**
 - Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,38 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S2] `shared`: đặc tả trường và kiểu — 2026-11-23 — Antigravity
+### Đã làm
+- Tạo `packages/shared/src/types.ts` định nghĩa `FIELD_ORDER` (25 thẻ theo thứ tự bảng BHXH), `FieldTag`, `FieldType`, `FieldSpec`, `SensitiveTag`, `GkskRecord` (25 khóa, giá trị `string`), `GkskListFields` (loại bỏ 4 trường nhạy cảm), `Issue`, `ServerIssue`, `ConflictMode`, `CertificateStatus`, `ReconcileTab`.
+- Tạo `packages/shared/src/fields.ts` mô tả đầy đủ 25 trường theo đúng thứ tự bảng BHXH ở `docs/DATA-SPEC.md §1` (bắt đầu `SO`, `NGAYKHAM`, `HOTEN`, `GIOITINHVAL`… kết thúc `STATE`), với đầy đủ thuộc tính `order`, `tag`, `label`, `type`, `maxLength`, `serverMaxLength`, `bhxhRequired`, `soRequired`, `enumValues`, `enumLabels`, `sensitive`, `inTemplate`, `readOnly`, `excelAliases`, `note` cùng các tập hằng dẫn xuất (`FIELD_BY_TAG`, `SENSITIVE_TAGS`, `SO_REQUIRED_TAGS`, `BHXH_REQUIRED_TAGS`, `BHXH_OPTIONAL_TAGS`, `TEMPLATE_FIELDS`, `EXCEL_REQUIRED_COLUMNS`, `createEmptyRecord`).
+- Tạo `packages/shared/src/messages.ts` ánh xạ toàn bộ **36 mã** sang thông điệp tiếng Việt có dấu (9 mã từ chối `API-CONTRACT.md §9`, 14 mã cảnh báo `API-CONTRACT.md §10`, 13 mã cục bộ `LOCAL_*` ở `DATA-SPEC.md §2` gồm cả `LOCAL_SO_EXISTS`, `LOCAL_SO_ACCEPTED_UNCHANGED`, `LOCAL_SO_ACCEPTED_MODIFIED`), kèm `getIssueMessage()` (trả nguyên mã nếu gặp mã lạ) và `formatIssueMessage()`.
+- Xuất đầy đủ module qua `packages/shared/src/index.ts`.
+- Viết unit test `packages/shared/src/fields.test.ts` (8 ca) và `packages/shared/src/messages.test.ts` (5 ca), cùng script kiểm chứng độc lập `scripts/verify-S2.ts` đối chiếu trực tiếp với `docs/reference/gksk_mau_ky_so_root.xml`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Shared: `packages/shared/src/types.ts`, `packages/shared/src/fields.ts`, `packages/shared/src/messages.ts`, `packages/shared/src/index.ts`.
+- Unit tests: `packages/shared/src/fields.test.ts`, `packages/shared/src/messages.test.ts`.
+- Kiểm chứng: `scripts/verify-S2.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S2/`)
+- `docs/evidence/S2/fields-and-messages-report.md`: bảng đối chiếu tự động 25 trường BHXH (khớp 25/25 thẻ dữ liệu của `docs/reference/gksk_mau_ky_so_root.xml`) và bảng toàn bộ 36 mã lỗi/cảnh báo/thông tin tiếng Việt.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`).
+- `npm.cmd test`: PASS — 7/7 test files, 30/30 tests (`shared`: 14 [8 fields + 5 messages + 1 ping], `server`: 15, `client`: 1).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S2.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 30/30 PASS, 0 skip/only).
+- ✔ Có file `docs/evidence/S2/fields-and-messages-report.md` đối chiếu khớp 25/25 thẻ với tài liệu gốc và file XML mẫu `gksk_mau_ky_so_root.xml`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Bổ sung thêm `serverMaxLength: 30` (và hằng `SO_BHXH_MAX_LENGTH = 20`, `SO_SERVER_MAX_LENGTH = 30`) trên đặc tả thẻ `SO`, cùng `enumLabels` và `excelAliases` (`['GIOITINH']` cho `GIOITINHVAL`) để các bước S3 (`validate.ts`), S10/S11 (`exportService`/`importService`) và S16 (Drawer) dùng chung một nguồn sự thật.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S3 — `shared`: chuẩn hóa và kiểm tra dữ liệu** (`packages/shared/src/{normalize,validate}.ts` + bộ test table-driven ≥ 60 ca, coverage `shared` ≥ 95%, kiểm chứng 2 múi giờ `TZ`).
 
 ## [S1] Cấu hình và logger — 2026-11-23 — Antigravity
 ### Đã làm
