@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S4 — Server: dựng XML**
-- Bước kế tiếp: **S5 — Server: `msg_id`, envelope, chữ ký**
+- Bước đã xong: **S5 — Server: `msg_id`, envelope, chữ ký**
+- Bước kế tiếp: **S6 — Mock API server**
 - Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,47 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S5] Server: `msg_id`, envelope, chữ ký — 2026-11-23 — Antigravity
+### Đã làm
+- Tạo `server/src/gksk/signature.ts` theo đúng `docs/API-CONTRACT.md §5`:
+  - Định nghĩa `ENVELOPE_HEADER_KEYS` (8 khóa đúng thứ tự: `version, sender_id, receiver_id, txn_type, msg_id, msg_type, data_type, send_datetime`), `EnvelopeHeader`, `EnvelopeSignatureParts`.
+  - `serializeEnvelopeHeader(header)`: ép đối tượng `header` về đúng thứ tự 8 khóa trước khi `JSON.stringify(header)` (gọn, không khoảng trắng thừa).
+  - `sha256HexUpper(input)`: tính SHA-256 chuỗi UTF-8 ra 64 ký tự hexa viết hoa.
+  - `computeEnvelopeSignatureParts(header, data, privateKeyPem?)` & `signEnvelope(header, data, privateKeyPem?)`: tính `H = SHA256_UPPER(JSON.stringify(header))`, `D = SHA256_UPPER(data.trim())`, `signed = H + "." + D`; nếu có `privateKeyPem` thì ký `RSA-PKCS1v1.5-SHA256` ra Base64, nếu không có khóa thì trả `"CHUA-KY-" + signed.slice(0, 16)`.
+  - `verifyEnvelopeSignature(header, data, signature, publicKeyPem)`: hàm phụ trợ xác thực chữ ký RSA phục vụ kiểm thử và Mock Server (khi bật `MOCK_VERIFY_SIGNATURE=1`).
+- Tạo `server/src/gksk/envelope.ts` theo đúng `docs/API-CONTRACT.md §3–§4`:
+  - `formatVnYyMmDd(nowMs)`: tính `YYMMDD` theo giờ Việt Nam (`UTC+7` cố định qua `new Date(nowMs + 7 * 3600 * 1000).toISOString()`), không phụ thuộc múi giờ máy và không gọi trực tiếp `Date.now()` trong logic.
+  - `newMsgId(senderId, nowMs)`: kiểm tra `senderId` hợp lệ (`^[A-Za-z0-9._-]+$`), ghép `sender_id + YYMMDD (UTC+7) + uuidV4SansDash` (32 ký tự hexa viết thường từ `crypto.randomUUID()`).
+  - `buildEnvelopeHeader({ senderId, msgId, sendDatetime })` & `buildEnvelope({ senderId, xml, msgId, sendDatetime, privateKeyPem? })`: dựng gói tin `{ header, data, signature }` với `header` giữ chính xác thứ tự 8 khóa, `data = toBase64Utf8(xml)` và `signature = signEnvelope(header, data, privateKeyPem)`.
+- Viết bộ unit test `server/src/gksk/signature.test.ts` (5 ca) và `server/src/gksk/envelope.test.ts` (6 ca): kiểm tra khớp từng ký tự với Golden Vector ở `API-CONTRACT.md §5`, ép thứ tự 8 khóa `header` kể cả khi input bị đảo key, `newMsgId` ở mốc giao thừa giờ VN (`16:59:59Z` → `261123`, `17:00:00Z` & `17:30:00Z` → `261124`) trên 5 múi giờ `TZ` khác nhau, sinh 10.000 `msg_id` liên tiếp không trùng, và ký/verify RSA 2048-bit.
+- Viết và chạy script kiểm chứng độc lập `scripts/verify-S5.ts` xuất gói tin mẫu `docs/evidence/S5/sample-envelope.json` và bảng đối chiếu từng dòng Golden Vector (`Expected` vs `Actual`) ra `docs/evidence/S5/verify-output.txt`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server: `server/src/gksk/signature.ts`, `server/src/gksk/envelope.ts`, `server/src/gksk/signature.test.ts`, `server/src/gksk/envelope.test.ts`.
+- Kiểm chứng: `scripts/verify-S5.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S5/`)
+- `docs/evidence/S5/sample-envelope.json`: gói tin JSON mẫu hoàn chỉnh ứng với Golden Vector (`API-CONTRACT.md §5`), giữ nguyên thứ tự 8 khóa `header`.
+- `docs/evidence/S5/verify-output.txt`: biên bản đối chiếu từng dòng Golden Vector (`Expected` vs `Actual` khớp 100% cho `Object.keys(header)`, `headerJson`, `data`, `H`, `D`, `signed`, `signature`), kiểm chứng ký/verify RSA 2048-bit, kiểm chứng `newMsgId` tại mốc giao thừa giờ VN trên 4 múi giờ `TZ`, 10.000 `msg_id` không trùng, và quét tĩnh 0 lệnh gọi `Date.now()`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`).
+- `npm.cmd test`: PASS — 12/12 test files, 181/181 tests (`shared`: 145, `server`: 35 [5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1).
+- Độ phủ `server/src/gksk/{envelope,signature}.ts` (`v8`): **100% Lines**, **100% Statements**, **100% Branches**, **100% Functions**.
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S5.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Golden vector xanh (`headerJson`, `data`, `H`, `D`, `signed`, `signature` khớp 100% từng ký tự).
+- ✔ Có đủ `docs/evidence/S5/sample-envelope.json` và `docs/evidence/S5/verify-output.txt`.
+- ✔ Không có `Date.now()` gọi trực tiếp trong logic (`envelope.ts` và `signature.ts` đều nhận `nowMs` / `sendDatetime` qua tham số).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Bổ sung thêm `computeEnvelopeSignatureParts()`, `serializeEnvelopeHeader()` và `verifyEnvelopeSignature()` trong `signature.ts` để hỗ trợ trích xuất từng thành phần băm (`headerJson`, `H`, `D`, `signedPayload`) khi đối soát Golden Vector và xác thực chữ ký RSA.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S6 — Mock API server** (`tools/mock-gksk-api/src/*`, script `npm run dev:mock`, tái hiện toàn bộ kịch bản Postman `1.1 → 4.6`, nhớ quy tắc Mock **không** dùng chung code với `server/`, chỉ dùng `@gksk/shared`).
 
 ## [S4] Server: dựng XML — 2026-11-23 — Antigravity
 ### Đã làm

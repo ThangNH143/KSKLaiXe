@@ -1,0 +1,67 @@
+================================================================================
+GKSKLaiXe — KIỂM CHỨNG BƯỚC S5: MSG_ID (UTC+7), ENVELOPE & CHỮ KÝ GÓI TIN
+================================================================================
+Thời điểm chạy : 2026-11-23T10:44:53.635Z
+File gói tin   : docs/evidence/S5/sample-envelope.json
+Báo cáo        : docs/evidence/S5/verify-output.txt
+
+1. BẢNG ĐỐI CHIẾU TỪNG DÒNG GOLDEN VECTOR (docs/API-CONTRACT.md §5)
+--------------------------------------------------------------------------------
+[1] Trường   : Object.keys(header)
+    Expected : version,sender_id,receiver_id,txn_type,msg_id,msg_type,data_type,send_datetime
+    Actual   : version,sender_id,receiver_id,txn_type,msg_id,msg_type,data_type,send_datetime
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+[2] Trường   : headerJson
+    Expected : {"version":"1.0.6","sender_id":"75001","receiver_id":"TTYQG","txn_type":"sync_gksk_lai_xe","msg_id":"75001261123a3f1c2e4b5d44e7f8a9b0c1d2e3f4a5b","msg_type":"101","data_type":"xml/base64","send_datetime":1781084650736}
+    Actual   : {"version":"1.0.6","sender_id":"75001","receiver_id":"TTYQG","txn_type":"sync_gksk_lai_xe","msg_id":"75001261123a3f1c2e4b5d44e7f8a9b0c1d2e3f4a5b","msg_type":"101","data_type":"xml/base64","send_datetime":1781084650736}
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+[3] Trường   : data (Base64 UTF-8)
+    Expected : PHJvb3Q+PFNPPlRFU1QuNzUwMDEuMTwvU08+PC9yb290Pg==
+    Actual   : PHJvb3Q+PFNPPlRFU1QuNzUwMDEuMTwvU08+PC9yb290Pg==
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+[4] Trường   : H = SHA256_UPPER(headerJson)
+    Expected : 6A618CAF5E36F31A4A779636EB2C34E9C4FCE1FFF20BE0A29D39CC9C0F04EC8F
+    Actual   : 6A618CAF5E36F31A4A779636EB2C34E9C4FCE1FFF20BE0A29D39CC9C0F04EC8F
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+[5] Trường   : D = SHA256_UPPER(data.trim())
+    Expected : 2D626275B6434A748DCF1A2A4A535C556C1C52EDDA981FE16967F937D599C11E
+    Actual   : 2D626275B6434A748DCF1A2A4A535C556C1C52EDDA981FE16967F937D599C11E
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+[6] Trường   : signed = H + "." + D
+    Expected : 6A618CAF5E36F31A4A779636EB2C34E9C4FCE1FFF20BE0A29D39CC9C0F04EC8F.2D626275B6434A748DCF1A2A4A535C556C1C52EDDA981FE16967F937D599C11E
+    Actual   : 6A618CAF5E36F31A4A779636EB2C34E9C4FCE1FFF20BE0A29D39CC9C0F04EC8F.2D626275B6434A748DCF1A2A4A535C556C1C52EDDA981FE16967F937D599C11E
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+[7] Trường   : signature (không khóa RSA)
+    Expected : CHUA-KY-6A618CAF5E36F31A
+    Actual   : CHUA-KY-6A618CAF5E36F31A
+    Kết quả  : PASS (KHỚP 100% TỪNG KÝ TỰ)
+
+2. KIỂM CHỨNG KÝ & XÁC THỰC RSA-PKCS1v1.5-SHA256 (2048-BIT)
+--------------------------------------------------------------------------------
+   - Độ dài chữ ký Base64 (RSA 2048-bit) : 344 ký tự
+   - Mẫu chữ ký RSA (64 ký tự đầu)       : WooSX0ux/S1zVV4FpWoh+b50uOUI2bOp9Z4+LygDUl6DUEyGaKtxMpzPpNMwhqVU...
+   - crypto.verify('sha256', signed, ...) : true [PASS]
+   - verifyEnvelopeSignature(...)         : true [PASS]
+
+3. KIỂM CHỨNG newMsgId(senderId, nowMs) THEO GIỜ VIỆT NAM (UTC+7 CỐ ĐỊNH)
+--------------------------------------------------------------------------------
+   - Mốc 1: 2026-11-23T16:59:59Z (tức 23:59:59 ngày 23/11/2026 giờ VN) -> YYMMDD = 261123
+   - Mốc 2: 2026-11-23T17:30:00Z (tức 00:30:00 ngày 24/11/2026 giờ VN) -> YYMMDD = 261124
+   [PASS] TZ=UTC                  | 16:59:59Z -> 75001261123 | 17:30:00Z -> 75001261124
+   [PASS] TZ=Asia/Ho_Chi_Minh     | 16:59:59Z -> 75001261123 | 17:30:00Z -> 75001261124
+   [PASS] TZ=America/Los_Angeles  | 16:59:59Z -> 75001261123 | 17:30:00Z -> 75001261124
+   [PASS] TZ=Pacific/Auckland     | 16:59:59Z -> 75001261123 | 17:30:00Z -> 75001261124
+   [PASS] Sinh 10.000 msg_id liên tiếp: 10000/10.000 duy nhất (0 trùng), 100% dài 43 ký tự & khớp regex UUID v4
+
+4. KIỂM TRA TĨNH KHÔNG GỌI TRỰC TIẾP Date.now() TRONG LOGIC
+--------------------------------------------------------------------------------
+   [PASS] server/src/gksk/envelope.ts  : 0 lệnh gọi Date.now() (nhận nowMs & sendDatetime qua tham số)
+   [PASS] server/src/gksk/signature.ts : 0 lệnh gọi Date.now()
+
+KẾT LUẬN: PASS 100% — ĐẠT ĐỦ ĐIỀU KIỆN QUA CỔNG BƯỚC S5.

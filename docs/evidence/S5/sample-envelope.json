@@ -1,0 +1,14 @@
+{
+  "header": {
+    "version": "1.0.6",
+    "sender_id": "75001",
+    "receiver_id": "TTYQG",
+    "txn_type": "sync_gksk_lai_xe",
+    "msg_id": "75001261123a3f1c2e4b5d44e7f8a9b0c1d2e3f4a5b",
+    "msg_type": "101",
+    "data_type": "xml/base64",
+    "send_datetime": 1781084650736
+  },
+  "data": "PHJvb3Q+PFNPPlRFU1QuNzUwMDEuMTwvU08+PC9yb290Pg==",
+  "signature": "CHUA-KY-6A618CAF5E36F31A"
+}
