@@ -64,5 +64,11 @@ describe('ISSUE_MESSAGES — ánh xạ mã lỗi/cảnh báo sang tiếng Việt
       field: null,
     });
     expect(plain).toBe(ISSUE_MESSAGES.GKSK_UNSIGNED);
+
+    const unknownField = formatIssueMessage({
+      code: 'GKSK_UNKNOWN_TAG',
+      field: 'CUSTOM_TAG',
+    });
+    expect(unknownField).toContain('[CUSTOM_TAG]');
   });
 });

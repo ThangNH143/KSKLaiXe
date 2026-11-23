@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S2 — `shared`: đặc tả trường và kiểu**
-- Bước kế tiếp: **S3 — `shared`: chuẩn hóa và kiểm tra dữ liệu**
+- Bước đã xong: **S3 — `shared`: chuẩn hóa và kiểm tra dữ liệu**
+- Bước kế tiếp: **S4 — Server: dựng XML**
 - Môi trường đã thử: *(chưa)* — mock: ☐ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,48 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S3] `shared`: chuẩn hóa và kiểm tra dữ liệu — 2026-11-23 — Antigravity
+### Đã làm
+- Tạo `packages/shared/src/normalize.ts` cài đặt hàm thuần `normalizeRecord(raw)` và các hàm phụ trợ theo `docs/DATA-SPEC.md §3`:
+  - `cleanText()`: xóa ký tự điều khiển XML 1.0 không hợp lệ (`\x00-\x08`, `\x0B`, `\x0C`, `\x0E-\x1F`, `\uFFFE`, `\uFFFF`), chuẩn hóa Unicode về NFC và `trim()`.
+  - `normalizeDateValue()`: nhận chuỗi `d/M/yyyy`, `dd/MM/yyyy`, `yyyy-MM-dd`, đối tượng `Date` và số serial ngày Excel (tính theo UTC từ gốc `1899-12-30`) → xuất `dd/MM/yyyy` (zero-padded); giữ nguyên chuỗi ngày không tồn tại (`31/02/1990`, `29/02/2025`, `31/04/2026`…) để validator bắt lỗi.
+  - `normalizeIdValue()`: giữ số 0 đầu của `SOCMND_PASSPORT`, bỏ dấu `'` đầu và khoảng trắng bên trong (không tự bù số 0 đầu).
+  - Chuẩn hóa enum `GIOITINHVAL` (`Nam/Nữ/Nu/M/F` → `0/1`, hỗ trợ bí danh cột `GIOITINH`), `KETLUAN` (chữ hoa, thay `–`/`—`/`−` và khoảng trắng quanh `-` về `-`), và `STATE` (rỗng mặc định là `ADD`).
+- Tạo `packages/shared/src/validate.ts` cài đặt hàm thuần `validateRecord(record, ctx: { facilityId, today })` và `hasBlockingErrors(issues)` theo `docs/DATA-SPEC.md §1–§2`:
+  - Bao phủ đầy đủ các mã lỗi chặn **server-mirror (R)**: `GKSK_SO_MISSING`, `GKSK_SO_TOO_LONG` (> 30 ký tự), `GKSK_HOTEN_INVALID` (trống hoặc > 255 ký tự), `GKSK_NGAYSINH_INVALID` (không phải ngày thật `dd/MM/yyyy` hoặc năm ngoài `1900..today.year`), `GKSK_ID_MISSING`, `GKSK_FACILITY_MISMATCH`, `GKSK_NGAYKETLUAN_INVALID`, `GKSK_KETLUAN_MISSING`.
+  - Bao phủ đầy đủ các mã cảnh báo **server-mirror (W)**: `GKSK_DATE_INVALID` (`NGAYKHAM`, `NGAYTHANGNAMCAP`, `NGAYKHAMLAI` khác rỗng và sai ngày), `GKSK_GIOITINH_UNKNOWN`, `GKSK_ID_INVALID` (toàn số 0 hoặc 10/11 chữ số), `GKSK_NONGDOCON_INVALID`, `GKSK_DVINONGDOCON_INVALID`, `GKSK_MATUY_INVALID`, `GKSK_KETLUAN_UNKNOWN`.
+  - Bao phủ đầy đủ các mã cục bộ **`LOCAL_*`**: `LOCAL_FIELD_OVER_SPEC` (mọi thẻ có `maxLength` trừ `SO`), `LOCAL_SO_OVER_20` (21–30 ký tự), `LOCAL_SO_FORMAT` (`^\d{5}/GKSKLX/<IDBENHVIEN>/\d{2}$`), `LOCAL_BHXH_REQUIRED_EMPTY` (**gộp thành đúng 1 dòng** với `fields: FieldTag[]`), `LOCAL_NGAYSINH_FUTURE`, `LOCAL_KETLUAN_A03_NO_RECHECK`, `LOCAL_NGAYKETLUAN_BEFORE_NGAYKHAM`, `LOCAL_ID_CREATES_PERSON` (9 hoặc 12 chữ số, khác toàn số 0).
+- Xuất `normalize.ts` và `validate.ts` qua `packages/shared/src/index.ts`; cấu hình `@vitest/coverage-v8` trong `packages/shared/vitest.config.ts`.
+- Viết bộ unit test data-driven `packages/shared/src/normalize.test.ts` (47 tests) và `packages/shared/src/validate.test.ts` (84 tests, gồm 72 ca ma trận `VALIDATION_MATRIX_CASES` ≥ 60 ca theo `docs/TEST-PLAN.md §3.1`).
+- Viết và chạy script kiểm chứng `scripts/verify-S3.ts` sinh báo cáo đầy đủ vào `docs/evidence/S3/validation-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Shared: `packages/shared/src/normalize.ts`, `packages/shared/src/validate.ts`, `packages/shared/src/index.ts`, `packages/shared/vitest.config.ts`.
+- Unit tests: `packages/shared/src/normalize.test.ts`, `packages/shared/src/validate.test.ts`, `packages/shared/src/messages.test.ts`.
+- Kiểm chứng: `scripts/verify-S3.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S3/`)
+- `docs/evidence/S3/validation-report.md`: báo cáo kết quả chuẩn hóa 11 kịch bản điển hình, kiểm tra 4 hồ sơ mẫu tổng hợp, bảng đối chiếu 23 mã quy tắc kích hoạt/sát biên, thông số độ phủ v8 (`100%` Lines/Statements/Branches/Functions) và log chạy Vitest thực tế ở cả 2 múi giờ `TZ=Asia/Ho_Chi_Minh` & `TZ=America/Los_Angeles`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`).
+- `npm.cmd test`: PASS — 9/9 test files, 161/161 tests (`shared`: 145 [8 fields + 5 messages + 47 normalize + 84 validate + 1 ping], `server`: 15, `client`: 1).
+- Độ phủ `packages/shared` (`v8`): **100% Lines** (445/445), **100% Statements**, **100% Branches** (98/98), **100% Functions** (22/22) — vượt ngưỡng ≥ 95%.
+- Kiểm chứng 2 múi giờ (`TZ=Asia/Ho_Chi_Minh` và `TZ=America/Los_Angeles`): đều PASS 145/145 tests.
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S3.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Độ phủ dòng `shared` ≥ 95% (đạt **100%**).
+- ✔ Chạy với 2 múi giờ `TZ` khác nhau (`Asia/Ho_Chi_Minh`, `America/Los_Angeles`) đều xanh.
+- ✔ Có `docs/evidence/S3/validation-report.md`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Cài thêm devDependency `@vitest/coverage-v8@^3.2.7` để đo chính xác độ phủ dòng `packages/shared` bằng Vitest v8 provider.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S4 — Server: dựng XML** (`server/src/gksk/xml.ts`: `buildGkskXml(record)` và `toBase64Utf8(xml)`).
 
 ## [S2] `shared`: đặc tả trường và kiểu — 2026-11-23 — Antigravity
 ### Đã làm
