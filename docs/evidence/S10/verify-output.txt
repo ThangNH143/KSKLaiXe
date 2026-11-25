@@ -1,0 +1,95 @@
+# Báo cáo Kiểm chứng Bước S10 — API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát
+
+- **Thời gian thực thi**: `2026-11-25T01:34:08.572Z`
+- **Kho dữ liệu**: `InMemoryRepositories` (tuân thủ quy tắc bảo vệ MSSQL đang vận hành).
+- **3 file bằng chứng thực tế đã sinh**:
+  1. `docs/evidence/S10/TEST_75001_0001.xml` (1011 bytes UTF-8)
+  2. `docs/evidence/S10/GKSK_XML_batch.zip` (1860 bytes — đóng gói 3 file XML hợp lệ)
+  3. `docs/evidence/S10/GKSK_doi_soat_sample.xlsx` (8913 bytes — 29 cột = 23 cột gốc định dạng Text `@` + 6 cột đối soát)
+
+---
+
+## 1. Kiểm chứng `GET /api/certificates` — Thống kê `counts` 4 Tab đối soát & Bảo mật Ẩn 4 Trường nhạy cảm
+
+### Thống kê `counts` trả về từ API
+```json
+{
+  "all": 6,
+  "unsent": 1,
+  "accepted": 2,
+  "attention": 3,
+  "ready": 1,
+  "invalid": 1,
+  "rejected": 1,
+  "error": 1,
+  "sending": 0
+}
+```
+
+- **Số trường trong `items[i].fields` ở danh sách**: **21 trường** (đã loại bỏ 4 trường nhạy cảm: `NONGDOCON, MATUY, LYDO, TINHTRANGBENH`).
+- **Số trường trong `fields` ở chi tiết `GET /api/certificates/:id`**: **25 trường** (đủ 25 trường theo thứ tự BHXH: `SO, NGAYKHAM, HOTEN, GIOITINHVAL, NGAYSINH, DIACHITHUONGTRU, MATINH_THUONGTRU, MAHUYEN_THUONGTRU, MAXA_THUONGTRU, SOCMND_PASSPORT, NGAYTHANGNAMCAP, NOICAP, HANGBANGLAI, IDBENHVIEN, BENHVIEN, NGAYKETLUAN, NONGDOCON, DVINONGDOCON, MATUY, BACSYKETLUAN, KETLUAN, NGAYKHAMLAI, LYDO, TINHTRANGBENH, STATE`).
+- **Kiểm tra không có endpoint tạo/sửa tay**: `POST /api/certificates` → `404`, `PUT /api/certificates/:id` → `404` (PASS).
+
+---
+
+## 2. Kiểm chứng File XML tải lẻ (`docs/evidence/S10/TEST_75001_0001.xml`)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <SO>TEST_75001_0001</SO>
+  <NGAYKHAM>05/11/2026</NGAYKHAM>
+  <HOTEN>TEST NGUYEN VAN AN</HOTEN>
+  <GIOITINHVAL>0</GIOITINHVAL>
+  <NGAYSINH>21/05/1990</NGAYSINH>
+  <DIACHITHUONGTRU>Phuong Tan Phong, Bien Hoa, Dong Nai</DIACHITHUONGTRU>
+  <MATINH_THUONGTRU>75</MATINH_THUONGTRU>
+  <MAHUYEN_THUONGTRU>75731</MAHUYEN_THUONGTRU>
+  <MAXA_THUONGTRU>7573126041</MAXA_THUONGTRU>
+  <SOCMND_PASSPORT>TESTGKSK01</SOCMND_PASSPORT>
+  <NGAYTHANGNAMCAP>10/01/2021</NGAYTHANGNAMCAP>
+  <NOICAP>Cuc CS QLHC ve TTXH</NOICAP>
+  <HANGBANGLAI>B2</HANGBANGLAI>
+  <IDBENHVIEN>75001</IDBENHVIEN>
+  <BENHVIEN>Benh vien Da khoa Dong Nai</BENHVIEN>
+  <NGAYKETLUAN>06/11/2026</NGAYKETLUAN>
+  <NONGDOCON>0</NONGDOCON>
+  <DVINONGDOCON>0</DVINONGDOCON>
+  <MATUY>0</MATUY>
+  <BACSYKETLUAN>TEST BS NGUYEN VAN KHOA</BACSYKETLUAN>
+  <KETLUAN>A0-1</KETLUAN>
+  <NGAYKHAMLAI></NGAYKHAMLAI>
+  <LYDO></LYDO>
+  <TINHTRANGBENH>Thi luc 10/10, suc khoe binh thuong</TINHTRANGBENH>
+  <STATE>ADD</STATE>
+</root>
+```
+
+---
+
+## 3. Kiểm chứng File ZIP hàng loạt (`docs/evidence/S10/GKSK_XML_batch.zip`)
+
+| STT | Tên file trong `.zip` (`sanitizeXmlFileName`) | Kích thước giải nén (bytes) | Khớp `buildGkskXml` |
+|---:|---|---:|---|
+| 1 | `TEST_75001_0001.xml` | 1011 | ✔ Khớp 100% từng byte UTF-8 |
+| 2 | `00002_GKSKLX_75001_26.xml` | 1028 | ✔ Khớp 100% từng byte UTF-8 |
+| 3 | `TEST.75001.0003.xml` | 1010 | ✔ Khớp 100% từng byte UTF-8 |
+
+---
+
+## 4. Kiểm chứng File Excel Đối soát 29 Cột (`docs/evidence/S10/GKSK_doi_soat_sample.xlsx`)
+
+- **23 cột dữ liệu gốc (định dạng Text `numFmt = "@"`)**: `SO, NGAYKHAM, HOTEN, GIOITINHVAL, NGAYSINH, DIACHITHUONGTRU, MATINH_THUONGTRU, MAHUYEN_THUONGTRU, MAXA_THUONGTRU, SOCMND_PASSPORT, NGAYTHANGNAMCAP, NOICAP, HANGBANGLAI, NGAYKETLUAN, NONGDOCON, DVINONGDOCON, MATUY, BACSYKETLUAN, KETLUAN, NGAYKHAMLAI, LYDO, TINHTRANGBENH, STATE`
+- **6 cột đối soát ở cuối**: `TRANG_THAI_DOI_SOAT, DOT_IMPORT, THOI_GIAN_DAY, MSG_ID, CERTIFICATE_ID_SO, CHI_TIET_LOI_CANH_BAO`
+- **Tổng số cột**: **29 cột**
+
+### Bảng trích xuất 6 dòng dữ liệu từ `GKSK_doi_soat_sample.xlsx` (đọc lại bằng `exceljs`)
+
+| Dòng | `SO` | `HOTEN` | `SOCMND_PASSPORT` | `TRANG_THAI_DOI_SOAT` | `DOT_IMPORT` | `THOI_GIAN_DAY` | `MSG_ID` | `CERTIFICATE_ID_SO` | `CHI_TIET_LOI_CANH_BAO` |
+|---:|---|---|---|---|---|---|---|---|---|
+| 1 | `TEST.75001.0006` | `TEST VU THI PHUONG` | `TESTGKSK06` | **Lỗi mạng - Chờ gửi lại** | `DS_KSK_LaiXe_Dot2_23112026.xlsx (dòng 3)` | `23/11/2026 09:11:05` | `7500126112311111111111141118111111111111106` | `-` | [TRANSIENT:http_5xx HTTP 503 (PS_DS_SAVE_FAIL)] Hệ thống Sở tạm thời quá tải | [Thông tin - LOCAL_SO_FORMAT] [Số giấy (SO)] Số giấy (SO) không theo mẫu chuẩn BHXH (NNNNN/GKSKLX/<mã CSYT>/<YY>); bình thường nếu là giấy thử nghiệm. |
+| 2 | `TEST.75001.0005` | `TEST HOANG VAN EM` | `TESTGKSK05` | **Cổng Sở từ chối** | `DS_KSK_LaiXe_Dot2_23112026.xlsx (dòng 2)` | `23/11/2026 09:05:01` | `7500126112311111111111141118111111111111105` | `-` | [Sở từ chối - GKSK_FACILITY_MISMATCH] [Mã CSYT (IDBENHVIEN)] Mã cơ sở y tế (IDBENHVIEN) trống hoặc không khớp với tài khoản CSYT. | [Thông tin - LOCAL_SO_FORMAT] [Số giấy (SO)] Số giấy (SO) không theo mẫu chuẩn BHXH (NNNNN/GKSKLX/<mã CSYT>/<YY>); bình thường nếu là giấy thử nghiệm. | [Cảnh báo Sở - GKSK_UNSIGNED] Giấy chưa có chữ ký số (bình thường ở phiên bản hiện tại, giấy vẫn được lưu). |
+| 3 | `TEST.75001.0004` | `TEST PHAM THI DUNG` | `TESTGKSK04` | **Lỗi dữ liệu Excel** | `DS_KSK_LaiXe_Dot1_23112026.xlsx (dòng 5)` | `-` | `-` | `-` | [Lỗi - GKSK_NGAYSINH_INVALID] [Ngày sinh (NGAYSINH)] Ngày sinh (NGAYSINH) không đúng định dạng dd/MM/yyyy hoặc năm sinh nằm ngoài khoảng 1900 đến năm hiện tại. | [Thông tin - LOCAL_SO_FORMAT] [Số giấy (SO)] Số giấy (SO) không theo mẫu chuẩn BHXH (NNNNN/GKSKLX/<mã CSYT>/<YY>); bình thường nếu là giấy thử nghiệm. |
+| 4 | `TEST.75001.0003` | `TEST LE VAN CUONG` | `TESTGKSK03` | **Chờ đẩy cổng** | `DS_KSK_LaiXe_Dot1_23112026.xlsx (dòng 4)` | `-` | `-` | `-` | [Thông tin - LOCAL_SO_FORMAT] [Số giấy (SO)] Số giấy (SO) không theo mẫu chuẩn BHXH (NNNNN/GKSKLX/<mã CSYT>/<YY>); bình thường nếu là giấy thử nghiệm. |
+| 5 | `00002/GKSKLX/75001/26` | `TEST TRAN THI BINH` | `079000012345` | **Đã đẩy thành công** | `DS_KSK_LaiXe_Dot1_23112026.xlsx (dòng 3)` | `23/11/2026 08:12:01` | `7500126112311111111111141118111111111111102` | `CERT-75001-2026-0002` | [Cảnh báo - LOCAL_ID_CREATES_PERSON] [Số CMND/CCCD/hộ chiếu (SOCMND_PASSPORT)] Số giấy tờ có 9 hoặc 12 chữ số (CMND/CCCD) — khi đẩy lên Sở sẽ tạo hồ sơ người mới nếu chưa tồn tại. | [Cảnh báo Sở - GKSK_UNSIGNED] Giấy chưa có chữ ký số (bình thường ở phiên bản hiện tại, giấy vẫn được lưu). |
+| 6 | `TEST_75001_0001` | `TEST NGUYEN VAN AN` | `TESTGKSK01` | **Đã đẩy thành công** | `DS_KSK_LaiXe_Dot1_23112026.xlsx (dòng 2)` | `23/11/2026 08:10:01` | `7500126112311111111111141118111111111111101` | `CERT-75001-2026-0001` | [Cảnh báo Sở - GKSK_UNSIGNED] Giấy chưa có chữ ký số (bình thường ở phiên bản hiện tại, giấy vẫn được lưu). |

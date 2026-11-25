@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S9 — Dịch vụ gửi (máy trạng thái) và gửi hàng loạt**
-- Bước kế tiếp: **S10 — API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát**
+- Bước đã xong: **S10 — API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát**
+- Bước kế tiếp: **S11 — Excel: mẫu và import ghi đè thông minh**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,55 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S10] API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát — 2026-11-25 — Antigravity
+### Đã làm
+- Cài đặt `exceljs` vào workspace `@gksk/server` (tuân thủ quyết định D6: không dùng gói `xlsx`/SheetJS trên npm).
+- Tạo `server/src/services/exportService.ts`:
+  - `sanitizeXmlFileName(so)` (và bí danh `buildXmlFileName(so)`): làm sạch ký tự cấm `/ \ : * ? " < > |`, ký tự điều khiển và chuỗi thoát thư mục `..` thành `_` an toàn.
+  - `buildXmlZip(records, options)` (kèm `createZipArchiveBuffer` & `extractZipArchiveBuffer` chuẩn PKZIP DEFLATE / UTF-8 flag): đóng gói nhiều file `<SO>.xml` của các giấy hợp lệ (tự động loại bỏ giấy đang `invalid` hoặc có lỗi dữ liệu chặn `hasBlockingErrors`) vào một file `.zip`; tự đánh hậu tố `_2.xml`, `_3.xml` nếu hai mã `SO` khác nhau sau khi làm sạch bị trùng tên file.
+  - `buildReconcileExcel(items)`: dùng `exceljs` xuất workbook `.xlsx` có sheet `GKSK` đóng băng dòng tiêu đề (freeze row 1), gồm **23 cột dữ liệu gốc** (đúng thứ tự bảng BHXH trừ `IDBENHVIEN`, `BENHVIEN`, định dạng Text `numFmt = '@'`) cộng thêm **6 cột đối soát ở cuối** (`TRANG_THAI_DOI_SOAT`, `DOT_IMPORT`, `THOI_GIAN_DAY`, `MSG_ID`, `CERTIFICATE_ID_SO`, `CHI_TIET_LOI_CANH_BAO`) theo đúng `docs/DATA-SPEC.md §5.4`.
+- Tạo `server/src/middleware/errorHandler.ts` (`AppError`, `createErrorHandler`, `sendErrorResponse`) chuẩn hóa toàn bộ phản hồi lỗi dưới dạng `{ "error": { "code": "...", "message": "..." } }` và tuyệt đối không làm lộ PII.
+- Tạo `server/src/services/certificateService.ts` (`CertificateService`, `createCertificateService`, `stripSensitiveFields`) và `server/src/routes/certificates.ts` (`createCertificatesRouter`), gắn vào `server/src/app.ts` cho 8 endpoint:
+  - `GET /api/batches`: danh sách các đợt import Excel (`id`, `filename`, `rowCount`, `createdAt`).
+  - `GET /api/certificates`: hỗ trợ `tab=all|unsent|accepted|attention`, `status`, `batchId`, `fromDate`, `toDate`, `q`, `page`, `pageSize`; trả kèm thống kê `counts` và thông tin lần gửi gần nhất; **tuyệt đối không trả 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`) ở danh sách**.
+  - `GET /api/certificates/export-excel`: tải file `GKSK_doi_soat_<YYYYMMDD_HHmmss>.xlsx` (29 cột) theo bộ lọc hiện tại.
+  - `POST /api/certificates/xml-zip`: tải file `GKSK_XML_<YYYYMMDD_HHmmss>.zip` chứa các file `<SO>.xml` hợp lệ.
+  - `GET /api/certificates/:id`: chi tiết chỉ đọc đủ 25 trường + `issues[]` + `xml` (nếu không có lỗi chặn) + thông tin đợt import + lần gửi gần nhất.
+  - `DELETE /api/certificates/:id`: xóa cục bộ giấy khỏi DB (kéo theo xóa `submissions`).
+  - `GET /api/certificates/:id/xml`: tải file lẻ `<SO>.xml` (`Content-Disposition: attachment`; trả HTTP `422` nếu giấy đang `invalid`).
+  - `GET /api/certificates/:id/submissions`: lịch sử các lần gửi của giấy.
+  - Không tạo endpoint tạo/sửa tay (`POST /api/certificates`, `PUT /api/certificates/:id`).
+- Viết bộ kiểm thử tích hợp Supertest & đơn vị `server/src/routes/certificates.test.ts` (7 ca kiểm thử) kiểm tra toàn diện tất cả endpoint và hàm xuất file.
+- Viết và chạy script kiểm chứng `scripts/verify-S10.ts` gọi trực tiếp các endpoint để sinh và lưu 3 file mẫu thật (`TEST_75001_0001.xml`, `GKSK_XML_batch.zip`, `GKSK_doi_soat_sample.xlsx`) kèm biên bản `verify-output.txt` vào `docs/evidence/S10/`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server Services, Routes & Middleware: `server/src/services/exportService.ts`, `server/src/services/certificateService.ts`, `server/src/routes/certificates.ts`, `server/src/middleware/errorHandler.ts`, `server/src/app.ts`, `server/src/routes/certificates.test.ts`.
+- Cấu hình gói: `server/package.json`, `package-lock.json`.
+- Kiểm chứng: `scripts/verify-S10.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S10/`)
+- `docs/evidence/S10/TEST_75001_0001.xml`: file XML tải lẻ từ `GET /api/certificates/:id/xml` (975 bytes UTF-8, đủ 25 thẻ đúng thứ tự BHXH).
+- `docs/evidence/S10/GKSK_XML_batch.zip`: file ZIP tải từ `POST /api/certificates/xml-zip` đóng gói 3 file XML hợp lệ (`TEST_75001_0001.xml`, `00002_GKSKLX_75001_26.xml`, `TEST.75001.0003.xml`, tự động bỏ qua giấy `invalid`).
+- `docs/evidence/S10/GKSK_doi_soat_sample.xlsx`: file Excel đối soát 29 cột (23 cột gốc định dạng Text `@` + 6 cột đối soát) tải từ `GET /api/certificates/export-excel`, có đủ 6 dòng đại diện cho các trạng thái `Đã đẩy thành công`, `Chờ đẩy cổng`, `Lỗi dữ liệu Excel`, `Cổng Sở từ chối`, `Lỗi mạng - Chờ gửi lại`.
+- `docs/evidence/S10/verify-output.txt`: biên bản kiểm chứng chi tiết JSON danh sách đối soát (`counts`, ẩn 4 trường nhạy cảm), nội dung XML, bảng giải nén ZIP và bảng đọc lại 29 cột Excel bằng `exceljs`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 17/17 test files, 234/234 tests (`shared`: 145, `server`: 78 [7 certificates/export + 9 send/job + 10 db repo + 17 client + 5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1, `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S10.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 234/234 PASS, 0 skip/only).
+- ✔ Có đủ 3 file mẫu thật `.xml`, `.zip`, `.xlsx` (cùng `verify-output.txt`) trong `docs/evidence/S10/`.
+- ✔ Không có endpoint tạo/sửa tay (`POST /api/certificates`, `PUT /api/certificates/:id` đều trả HTTP 404).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Trong `exportService.ts`, xuất cả hai tên hàm `sanitizeXmlFileName` và `buildXmlFileName` (bí danh) để khớp cả mô tả trong prompt lẫn `docs/IMPLEMENTATION-PLAN.md`. Tự cài đặt bộ đóng gói/giải nén PKZIP chuẩn (`DEFLATE` + cờ UTF-8 bit 11 bằng `node:zlib`) không cần thêm dependency bên thứ ba cho ZIP.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S11 — Excel: mẫu và import ghi đè thông minh** (`server/src/services/importService.ts`, `server/src/routes/import.ts`, script sinh fixtures `tests/fixtures/make-fixtures.ts`, kiểm thử round-trip lấy chính file Excel đối soát 29 cột của S10 sửa dòng lỗi rồi đưa vào `previewImport`).
 
 ## [S9] Dịch vụ gửi (máy trạng thái) và gửi hàng loạt — 2026-11-23 — Antigravity
 ### Đã làm

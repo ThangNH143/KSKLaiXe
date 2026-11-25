@@ -4,20 +4,29 @@ import { createRepositories } from './db/connection.js';
 import type { DbRepositories } from './db/types.js';
 import { createGkskClient, type GkskClient } from './gksk/client.js';
 import { logger as defaultLogger } from './logger.js';
+import { createErrorHandler } from './middleware/errorHandler.js';
+import { createCertificatesRouter } from './routes/certificates.js';
 import { healthRouter } from './routes/health.js';
 import { createSendRouter } from './routes/send.js';
+import {
+  createCertificateService,
+  type CertificateService,
+} from './services/certificateService.js';
 import { createJobService, type JobService } from './services/jobService.js';
 import { createSendService, type SendService } from './services/sendService.js';
 
 export interface CreateAppOptions {
   repos?: DbRepositories;
   gkskClient?: GkskClient;
+  certificateService?: CertificateService;
   sendService?: SendService;
   jobService?: JobService;
   facilityId?: string;
+  facilityName?: string;
   senderId?: string;
   privateKeyPem?: string;
   today?: string | Date;
+  now?: () => number;
   logger?: Logger;
 }
 
@@ -28,6 +37,11 @@ export function createApp(options?: CreateAppOptions): Express {
   const log = options?.logger ?? defaultLogger;
   const repos = options?.repos ?? createRepositories();
   const facilityId = (options?.facilityId ?? process.env.GKSK_FACILITY_ID ?? '75001').trim();
+  const facilityName = (
+    options?.facilityName ??
+    process.env.GKSK_FACILITY_NAME ??
+    'Benh vien Da khoa Dong Nai'
+  ).trim();
   const senderId = (options?.senderId ?? process.env.GKSK_SENDER_ID ?? facilityId).trim();
 
   const gkskClient =
@@ -37,6 +51,16 @@ export function createApp(options?: CreateAppOptions): Express {
       username: process.env.GKSK_USERNAME ?? facilityId,
       password: process.env.GKSK_PASSWORD ?? 'mock',
       logger: log,
+    });
+
+  const certificateService =
+    options?.certificateService ??
+    createCertificateService({
+      repos,
+      facilityId,
+      facilityName,
+      ...(options?.today !== undefined ? { today: options.today } : {}),
+      ...(options?.now !== undefined ? { now: options.now } : {}),
     });
 
   const sendService =
@@ -50,6 +74,7 @@ export function createApp(options?: CreateAppOptions): Express {
         ? { privateKeyPem: options.privateKeyPem }
         : {}),
       ...(options?.today !== undefined ? { today: options.today } : {}),
+      ...(options?.now !== undefined ? { now: options.now } : {}),
       logger: log,
     });
 
@@ -61,7 +86,9 @@ export function createApp(options?: CreateAppOptions): Express {
     });
 
   app.use('/api', healthRouter);
+  app.use('/api', createCertificatesRouter({ certificateService }));
   app.use('/api', createSendRouter({ sendService, jobService }));
+  app.use(createErrorHandler(log));
 
   return app;
 }
