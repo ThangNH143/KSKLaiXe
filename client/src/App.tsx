@@ -1,97 +1,340 @@
-import { useEffect, useState } from 'react';
-import { ping } from '@gksk/shared';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
+import {
+  fetchCurrentUser,
+  fetchPublicConfig,
+  logout,
+  setUnauthorizedHandler,
+  type AuthUser,
+  type PublicConfig,
+} from './api';
+import { EnvBanner } from './components/EnvBanner';
+import { LoginPage } from './pages/LoginPage';
 
-type HealthState =
-  | { status: 'loading' }
-  | { status: 'ok'; ok: boolean }
-  | { status: 'error'; message: string };
+function ReconcileListPlaceholder({ config }: { config: PublicConfig | null }) {
+  return (
+    <section className="workspace-panel">
+      <div className="panel-heading-row">
+        <div>
+          <h1 id="page-heading" tabIndex={-1}>
+            Danh sách &amp; Đối soát GKSK Lái xe
+          </h1>
+          <p className="panel-subtitle">
+            Theo dõi 100% quân số đã nạp từ Excel theo 4 nhóm trạng thái đối soát,
+            xuất file XML lẻ / gói ZIP và đẩy cổng Sở Y tế Đồng Nai.
+          </p>
+        </div>
+        <Link to="/import" className="btn-primary">
+          Đi tới Import Excel
+        </Link>
+      </div>
+
+      <div className="summary-grid" aria-label="Tổng quan 4 nhóm đối soát">
+        <div className="summary-tile tile-all">
+          <span className="summary-tile-label">Tất cả giấy đã nạp</span>
+          <strong className="summary-tile-value">0</strong>
+          <span className="summary-tile-note">Khớp 100% quân số có mã SO</span>
+        </div>
+        <div className="summary-tile tile-ready">
+          <span className="summary-tile-label">Chưa đẩy (Sẵn sàng)</span>
+          <strong className="summary-tile-value">0</strong>
+          <span className="summary-tile-note">Đủ điều kiện xuất XML &amp; đẩy cổng</span>
+        </div>
+        <div className="summary-tile tile-accepted">
+          <span className="summary-tile-label">Đã đẩy thành công</span>
+          <strong className="summary-tile-value">0</strong>
+          <span className="summary-tile-note">Đã ghi nhận trên Hệ thống Sở</span>
+        </div>
+        <div className="summary-tile tile-attention">
+          <span className="summary-tile-label">Cần xử lý</span>
+          <strong className="summary-tile-value">0</strong>
+          <span className="summary-tile-note">Lỗi Excel · Sở từ chối · Lỗi mạng</span>
+        </div>
+      </div>
+
+      <div className="info-callout">
+        <strong>Quy trình làm việc chuẩn (không nhập tay trên web):</strong>{' '}
+        Mọi dữ liệu giấy khám sức khỏe đều được nạp từ file Excel mẫu tại mục{' '}
+        <Link to="/import">Import Excel</Link>. Khi có dòng lỗi, tải file Excel
+        đối soát 29 cột để chỉnh sửa rồi Import đè lại theo mã <code>SO</code>.
+        {config && (
+          <span>
+            {' '}
+            Đang kết nối CSYT <strong>{config.facilityId}</strong> (
+            {config.facilityName}).
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ImportExcelPlaceholder() {
+  return (
+    <section className="workspace-panel">
+      <div className="panel-heading-row">
+        <div>
+          <h1 id="page-heading" tabIndex={-1}>
+            Import Excel GKSK Lái xe
+          </h1>
+          <p className="panel-subtitle">
+            Tải file Excel mẫu chuẩn 23 cột BHXH, kiểm tra lỗi từng dòng trước khi
+            lưu và tự động đối chiếu ghi đè thông minh theo mã <code>SO</code>.
+          </p>
+        </div>
+        <Link to="/" className="btn-secondary">
+          Quay lại Danh sách &amp; Đối soát
+        </Link>
+      </div>
+
+      <div className="info-callout">
+        Khung trang <strong>Import Excel</strong> đã sẵn sàng kết nối tầng API (
+        <code>GET /api/import/template</code>, <code>POST /api/import/excel</code>,{' '}
+        <code>POST /api/import/commit</code>). Giao diện tải file và bảng xem trước
+        ghi đè thông minh sẽ được hoàn thiện ở bước kế tiếp (S14).
+      </div>
+    </section>
+  );
+}
+
+interface AuthenticatedShellProps {
+  config: PublicConfig | null;
+  user: AuthUser;
+  onLogout: () => Promise<void>;
+}
+
+function AuthenticatedShell({
+  config,
+  user,
+  onLogout,
+}: AuthenticatedShellProps) {
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogoutClick() {
+    setLoggingOut(true);
+    try {
+      await onLogout();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
+  return (
+    <div className="app-layout">
+      <a href="#main-content" className="skip-link visually-hidden">
+        Chuyển đến nội dung chính
+      </a>
+
+      <EnvBanner config={config} />
+
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand-block">
+            <Link to="/" className="brand-link">
+              <span className="brand-mark" aria-hidden="true">
+                GK
+              </span>
+              <span className="brand-text">
+                <span className="brand-title">GKSKLaiXe</span>
+                <span className="brand-facility" data-testid="header-facility-info">
+                  {config
+                    ? `CSYT ${config.facilityId} · ${config.facilityName}`
+                    : 'Cơ sở Y tế'}
+                </span>
+              </span>
+            </Link>
+            <span
+              className={`env-badge ${
+                config?.appEnv === 'production'
+                  ? 'env-badge-prod'
+                  : 'env-badge-test'
+              }`}
+              data-testid="header-env-badge"
+            >
+              {config?.appEnv === 'production' ? 'PRODUCTION' : 'Kiểm thử'}
+            </span>
+          </div>
+
+          <nav className="primary-nav" aria-label="Điều hướng chính">
+            <ul className="nav-list">
+              <li>
+                <NavLink to="/" end className="nav-link">
+                  Danh sách &amp; Đối soát
+                </NavLink>
+              </li>
+              <li>
+                <NavLink to="/import" className="nav-link">
+                  Import Excel
+                </NavLink>
+              </li>
+            </ul>
+          </nav>
+
+          <div className="account-actions">
+            <span className="user-pill" data-testid="current-username">
+              {user.username}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                void handleLogoutClick();
+              }}
+              disabled={loggingOut}
+            >
+              {loggingOut ? 'Đang thoát...' : 'Đăng xuất'}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main id="main-content" className="workspace-main">
+        <Routes>
+          <Route path="/" element={<ReconcileListPlaceholder config={config} />} />
+          <Route path="/import" element={<ImportExcelPlaceholder />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
 
 export function App() {
-  const [health, setHealth] = useState<HealthState>({ status: 'loading' });
-  const sharedStatus = ping();
+  const [config, setConfig] = useState<PublicConfig | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [initializing, setInitializing] = useState(true);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleUnauthorized = useCallback(() => {
+    setUser(null);
+    setSessionNotice('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(handleUnauthorized);
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, [handleUnauthorized]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function checkHealth() {
-      try {
-        const res = await fetch('/api/health');
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as { ok?: boolean };
-        if (!cancelled) {
-          setHealth({ status: 'ok', ok: Boolean(data.ok) });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'Không thể kết nối máy chủ';
-          setHealth({ status: 'error', message });
-        }
+    async function bootstrap() {
+      const [configResult, userResult] = await Promise.allSettled([
+        fetchPublicConfig(),
+        fetchCurrentUser(),
+      ]);
+
+      if (cancelled) {
+        return;
       }
+
+      if (configResult.status === 'fulfilled') {
+        setConfig(configResult.value);
+      }
+
+      if (userResult.status === 'fulfilled') {
+        setUser(userResult.value.user);
+      } else {
+        setUser(null);
+      }
+
+      setInitializing(false);
     }
 
-    void checkHealth();
+    void bootstrap();
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // Cập nhật tiêu đề trang SPA theo từng route (WCAG 2.4.2 Page Titled)
+  useEffect(() => {
+    if (!user || location.pathname === '/login') {
+      document.title = 'Đăng nhập | GKSKLaiXe';
+    } else if (location.pathname === '/import') {
+      document.title = 'Import Excel | GKSKLaiXe';
+    } else {
+      document.title = 'Danh sách & Đối soát | GKSKLaiXe';
+    }
+  }, [user, location.pathname]);
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // Vẫn xóa trạng thái cục bộ ngay cả khi máy chủ đã thu hồi phiên trước đó
+    } finally {
+      setUser(null);
+      setSessionNotice(null);
+      navigate('/login', { replace: true });
+    }
+  }
+
+  function handleLoginSuccess(loggedInUser: AuthUser) {
+    setUser(loggedInUser);
+    setSessionNotice(null);
+    navigate('/', { replace: true });
+  }
+
+  if (initializing) {
+    return (
+      <div className="bootstrap-screen">
+        <EnvBanner config={config} />
+        <main id="main-content" className="bootstrap-main">
+          <div className="bootstrap-card" role="status">
+            <div className="spinner-dot" aria-hidden="true" />
+            <span>Đang khởi tạo phiên làm việc GKSKLaiXe...</span>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <LoginPage
+              config={config}
+              sessionNotice={sessionNotice}
+              onLoginSuccess={handleLoginSuccess}
+            />
+          }
+        />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="badge-row">
-          <span className="env-pill">S0 · Khung Monorepo</span>
-          <span
-            className={`status-pill status-${health.status}`}
-            data-testid="health-status"
-          >
-            {health.status === 'loading' && 'Đang kiểm tra /api/health...'}
-            {health.status === 'ok' &&
-              `Kết nối /api/health: Thành công ({"ok": ${String(health.ok)}}) · shared: ${sharedStatus}`}
-            {health.status === 'error' && `Lỗi kết nối /api/health: ${health.message}`}
-          </span>
-        </div>
-        <h1>GKSKLaiXe — Hệ thống Import Excel, Xuất XML &amp; Đối soát GKSK Lái xe</h1>
-        <p className="subtitle">
-          Nền tảng xử lý Giấy khám sức khỏe lái xe cho Cơ sở Y tế — chuẩn hóa dữ liệu từ Excel,
-          xuất XML/ZIP và đẩy cổng Sở Y tế Đồng Nai.
-        </p>
-      </header>
-
-      <main className="grid">
-        <section className="card">
-          <h2>1. Import Excel thông minh</h2>
-          <p>
-            Đọc file Excel theo mẫu, kiểm tra 25 thẻ BHXH, lưu đủ 100% quân số có mã{' '}
-            <code>SO</code> và tự động đối chiếu ghi đè khi nạp lại.
-          </p>
-        </section>
-
-        <section className="card">
-          <h2>2. Kiểm tra &amp; Đối soát</h2>
-          <p>
-            Phân nhóm rõ ràng Chưa đẩy / Đã đẩy thành công / Cần xử lý, lọc theo đợt import và xuất
-            file Excel đối soát 29 cột.
-          </p>
-        </section>
-
-        <section className="card">
-          <h2>3. Xuất XML lẻ &amp; Gói ZIP</h2>
-          <p>
-            Xem trước mã nguồn XML chuẩn <code>&lt;root&gt;</code> đủ 25 thẻ, tải lẻ{' '}
-            <code>&lt;SO&gt;.xml</code> hoặc đóng gói hàng loạt thành file <code>.zip</code>.
-          </p>
-        </section>
-
-        <section className="card">
-          <h2>4. Đẩy cổng Sở Y tế</h2>
-          <p>
-            Dựng envelope theo giờ Việt Nam (UTC+7), ký gói tin SHA-256/RSA, retry an toàn giữ
-            nguyên <code>msg_id</code> và tra cứu trạng thái.
-          </p>
-        </section>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route
+        path="/*"
+        element={
+          <AuthenticatedShell
+            config={config}
+            user={user}
+            onLogout={handleLogout}
+          />
+        }
+      />
+    </Routes>
   );
 }

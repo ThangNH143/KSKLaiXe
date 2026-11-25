@@ -1,0 +1,25 @@
+# Báo cáo kiểm chứng bước S13 — Client: khung, đăng nhập, API layer
+
+## 1. Kiểm tra 3 ảnh chụp màn hình thực tế (Browser Subagent trên dev:mock)
+- ✅ `docs/evidence/S13/01-login-page.png`: 40266 bytes (769x782 px, PNG hợp lệ)
+- ✅ `docs/evidence/S13/02-app-shell-test-env.png`: 88643 bytes (1024x640 px, PNG hợp lệ)
+- ✅ `docs/evidence/S13/03-app-shell-prod-banner.png`: 118684 bytes (1024x640 px, PNG hợp lệ)
+
+## 2. Kiểm tra kiến trúc mã nguồn `client/src`
+- ✅ `client/src/api/http.ts` (6647 bytes)
+- ✅ `client/src/api/auth.ts` (1381 bytes)
+- ✅ `client/src/api/certificates.ts` (4446 bytes)
+- ✅ `client/src/api/import.ts` (2130 bytes)
+- ✅ `client/src/api/send.ts` (2637 bytes)
+- ✅ `client/src/pages/LoginPage.tsx` (8034 bytes)
+- ✅ `client/src/components/EnvBanner.tsx` (1426 bytes)
+- ✅ `client/src/App.tsx` (10519 bytes)
+- ✅ `client/src/main.tsx` (425 bytes)
+- ✅ `client/src/api/http.ts` gắn sẵn `X-Requested-With: gksk` & `credentials: include`.
+- ✅ Quét toàn bộ `client/src`: 0 tham chiếu tới `EntryPage`, `CertificateForm`, `react-hook-form` hay biến bí mật server.
+
+## 3. Kiểm tra bản build `client/dist`
+- ✅ Quét 3 file trong `client/dist`: 0 bí mật/token CSYT/DB bị nhúng vào bundle client.
+
+## 4. Kết luận
+- **100% hạng mục kiểm chứng bước S13 ĐẠT (PASS).**

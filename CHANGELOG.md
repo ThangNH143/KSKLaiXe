@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S12 — Xác thực ứng dụng (server)**
-- Bước kế tiếp: **S13 — Client: khung, đăng nhập, API layer**
+- Bước đã xong: **S13 — Client: khung, đăng nhập, API layer**
+- Bước kế tiếp: **S14 — Client: trang Import Excel (ghi đè thông minh)**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,52 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S13] Client: khung, đăng nhập, API layer — 2026-11-25 — Antigravity
+### Đã làm
+- Cài đặt `react-router-dom` (`^7.18.7`) vào workspace `@gksk/client`.
+- Xây dựng tầng gọi API đầy đủ tại `client/src/api/`:
+  - `http.ts`: `apiRequest` và `apiDownload` luôn gắn `credentials: 'include'` và header CSRF `X-Requested-With: gksk`, chuẩn hóa lỗi thành `ApiError` (kèm `retryAfterSeconds` cho HTTP 429), hỗ trợ `FormData` upload không ghi đè `Content-Type`, và gọi `unauthorizedHandler` toàn cục khi nhận HTTP `401` để tự động chuyển về `/login`.
+  - `auth.ts`: `fetchHealth`, `fetchPublicConfig`, `fetchCurrentUser`, `login`, `logout`.
+  - `certificates.ts`: `listBatches`, `listCertificates`, `getCertificateDetail`, `deleteCertificate`, `listCertificateSubmissions`, `downloadCertificateXml`, `downloadCertificatesXmlZip`, `downloadReconcileExcel` (chỉ import kiểu từ `@gksk/shared`, không import `@gksk/server`).
+  - `import.ts`: `downloadImportTemplate`, `previewExcelImport`, `commitExcelImport`.
+  - `send.ts`: `sendSingleCertificate`, `startBatchSend`, `getBatchJob`, `refreshSubmissionStatus`.
+- Xây dựng giao diện và khung điều hướng (áp dụng chuẩn `modern-web-guidance`: `autofill-sign-in-form`, `validate-input-after-interaction`, `navbar`, `accessibility`):
+  - `client/src/components/EnvBanner.tsx`: hiển thị banner đỏ nổi bật (`role="alert"`, kèm mã CSYT, tên CSYT, `baseUrlHost`) khi `appEnv === 'production'`; không hiển thị ở chế độ `test`.
+  - `client/src/pages/LoginPage.tsx`: form đăng nhập ngữ nghĩa với `autocomplete="username"` / `autocomplete="current-password"`, nút Hiện/Ẩn mật khẩu (`aria-pressed`), kiểm tra hợp lệ sau tương tác (`:user-invalid` + đồng bộ `aria-invalid`/`aria-describedby`), hiển thị thông báo lỗi máy chủ và thông báo hết hạn phiên `401`.
+  - `client/src/App.tsx`, `client/src/main.tsx`, `client/src/App.css`: khung ứng dụng với `BrowserRouter`, skip link, `<nav aria-label="Điều hướng chính">` chỉ gồm đúng **2 trang** (**Danh sách & Đối soát** `/` và **Import Excel** `/import`, tuyệt đối không có trang Nhập liệu), hiển thị mã/tên CSYT và nút Đăng xuất, cập nhật `document.title` theo route và chuyển về `/login` ngay khi gặp `401`.
+- Cập nhật `client/src/testSetup.ts` tự động chạy `cleanup()` sau mỗi test và viết 2 bộ test tự động (`client/src/api/http.test.ts` + `client/src/App.test.tsx`, tổng 7 tests).
+- Khởi chạy ứng dụng thật `npm run dev:mock` trên cả 2 chế độ `APP_ENV=test` và `APP_ENV=production`, điều phối Browser Subagent kiểm chứng luồng đăng nhập sai → đăng nhập đúng → chuyển tab `/import` ↔ `/` → banner production, xác nhận 0 lỗi JS/React console và 0 lộ token CSYT trong Network, chụp và lưu 3 ảnh màn hình thực tế vào `docs/evidence/S13/`.
+- Viết và chạy script kiểm chứng `scripts/verify-S13.ts` xác nhận 3 file PNG hợp lệ, đủ 9 file nguồn S13 và 0 bí mật trong `client/dist`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Client API Layer: `client/src/api/{http,auth,certificates,import,send,index}.ts`, `client/src/api/http.test.ts`.
+- Client UI & Routing: `client/src/components/EnvBanner.tsx`, `client/src/pages/LoginPage.tsx`, `client/src/App.tsx`, `client/src/main.tsx`, `client/src/App.css`, `client/src/App.test.tsx`, `client/src/testSetup.ts`.
+- Cấu hình gói & Kiểm chứng: `client/package.json`, `package-lock.json`, `scripts/verify-S13.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S13/`)
+- `docs/evidence/S13/01-login-page.png`: ảnh chụp màn hình thật trang Đăng nhập (1280×800) kèm thông báo lỗi khi nhập sai mật khẩu và thông tin CSYT `75001`.
+- `docs/evidence/S13/02-app-shell-test-env.png`: ảnh chụp khung ứng dụng sau khi đăng nhập ở `APP_ENV=test` (không có banner đỏ, hiển thị `CSYT 75001 · Benh vien Da khoa Dong Nai`, đúng 2 mục menu `Danh sách & Đối soát` và `Import Excel`, không có Nhập liệu).
+- `docs/evidence/S13/03-app-shell-prod-banner.png`: ảnh chụp khung ứng dụng ở `APP_ENV=production` hiển thị nổi bật banner đỏ cảnh báo ở đầu trang kèm `CSYT: 75001` và `gksk.dongnai.gov.vn`.
+- `docs/evidence/S13/verify-output.txt`: biên bản kiểm chứng 3 ảnh PNG, cấu trúc nguồn S13 và quét sạch bí mật trên bundle `client/dist`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd run build -w @gksk/client`: PASS.
+- `npm.cmd test`: PASS — 20/20 test files, 251/251 tests (`shared`: 145, `server`: 89, `client`: 7 [4 http + 3 App/LoginPage/EnvBanner], `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S13.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 251/251 PASS, 0 skip/only).
+- ✔ Có đủ 3 ảnh chụp màn hình thực tế trong `docs/evidence/S13/` (`01-login-page.png`, `02-app-shell-test-env.png`, `03-app-shell-prod-banner.png`) cùng `verify-output.txt`.
+- ✔ Trình duyệt 0 lỗi JS/React console và không lộ token CSYT trong tab Network (xác nhận qua Browser Subagent & quét `client/dist`).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Bổ sung `afterEach(() => cleanup())` trong `client/src/testSetup.ts` vì Vitest chạy với `globals: false`.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S14 — Client: trang Import Excel (ghi đè thông minh)** (`client/src/pages/ImportPage.tsx`, `client/src/components/IssueList.tsx`), thay thế placeholder `<ImportExcelPlaceholder />` tại route `/import` trong `client/src/App.tsx` và dùng trực tiếp `downloadImportTemplate`, `previewExcelImport`, `commitExcelImport` từ `client/src/api/import.ts`.
 
 ## [S12] Xác thực ứng dụng (server) — 2026-11-25 — Antigravity
 ### Đã làm
