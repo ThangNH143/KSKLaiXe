@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S10 — API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát**
-- Bước kế tiếp: **S11 — Excel: mẫu và import ghi đè thông minh**
+- Bước đã xong: **S11 — Excel: mẫu và import ghi đè thông minh**
+- Bước kế tiếp: **S12 — Xác thực ứng dụng (server)**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,55 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S11] Excel: mẫu và import ghi đè thông minh — 2026-11-25 — Antigravity
+### Đã làm
+- Cài đặt `multer` và `@types/multer` vào workspace `@gksk/server`.
+- Tạo `tests/fixtures/make-fixtures.ts` (`buildAllExcelFixtures`, `writeFixturesToDisk`) sinh đủ **19 bộ dữ liệu Excel kiểm thử** theo bảng `docs/TEST-PLAN.md §2.1`: `ok_5rows.xlsx`, `mixed_valid_invalid.xlsx`, `reimport_overwrite.xlsx`, `leading_zero.xlsx`, `dates_mixed.xlsx`, `dates_bad.xlsx`, `missing_required_col.xlsx`, `extra_cols_reordered.xlsx`, `blank_rows.xlsx`, `formulas.xlsx`, `dup_so.xlsx`, `facility_mismatch.xlsx`, `alias_gioitinh.xlsx`, `over_length.xlsx`, `enum_variants.xlsx`, `too_many_rows.xlsx`, `big_1000.xlsx`, `not_xlsx.xlsx`, `empty.xlsx`.
+- Tạo `server/src/services/importService.ts` (`ImportService`, `createImportService`) theo đúng `docs/DATA-SPEC.md §5.1–§5.3`:
+  - `buildTemplate()`: tạo `GKSK_mau_nhap_lieu.xlsx` bằng `exceljs` gồm 2 sheet:
+    1. Sheet `GKSK`: 23 cột theo đúng thứ tự bảng BHXH (trừ `IDBENHVIEN`, `BENHVIEN`), định dạng Text (`numFmt = '@'`) cho toàn bộ 23 cột trong ít nhất 2000 dòng đầu (dòng `2..2001`), đóng băng dòng 1 (`ySplit: 1`), để trống dữ liệu và gắn Data Validation dạng danh sách (dropdown) cho `GIOITINHVAL` (`0,1`), `DVINONGDOCON` (`0,1`), `MATUY` (`0,1`), `KETLUAN` (`A0-1,A0-2,A0-3`), `STATE` (`ADD,EDIT`).
+    2. Sheet `HuongDan`: bảng 5 cột (`Thẻ`, `Ý nghĩa`, `Bắt buộc (Sở / BHXH)`, `Định dạng & độ dài tối đa`, `Ví dụ giả`) sinh tự động từ `FIELDS`.
+  - `previewImport(buffer)`:
+    - Kiểm tra kích thước `≤ 5 MB`, magic bytes `PK\x03\x04` (`.xlsx`), tìm sheet `GKSK` (hoặc sheet đầu tiên).
+    - Khớp tên cột không phân biệt hoa thường/khoảng trắng, chấp nhận bí danh `GIOITINH` → `GIOITINHVAL` (nếu có cả hai thì `GIOITINHVAL` thắng và báo `GIOITINH` bị bỏ qua), liệt kê cột lạ vào `ignoredColumns` (bao gồm 6 cột đối soát khi người dùng import ngược lại file Excel đối soát 29 cột), từ chối nếu thiếu bất kỳ cột nào trong 6 cột bắt buộc (`SO`, `HOTEN`, `NGAYSINH`, `SOCMND_PASSPORT`, `KETLUAN`, `NGAYKETLUAN`) hoặc vượt quá 1000 dòng dữ liệu.
+    - Giải mã ô công thức (`result`), ô RichText, ô lỗi công thức (`#N/A`…), ngày `Date`/serial Excel/chuỗi, giữ số `0` đầu của `SOCMND_PASSPORT`, bắt lỗi `LOCAL_FACILITY_MISMATCH` nếu file Excel có cột `IDBENHVIEN` khác cấu hình server.
+    - Tra cứu hàng loạt trong DB theo danh sách mã `SO` hợp lệ (`findBySoList`) để phân loại chính xác 5 chế độ `conflictMode` (`new`, `overwrite_pending`, `accepted_unchanged`, `accepted_modified`, `missing_so`) và gán `defaultSelected` theo `DATA-SPEC.md §5.2`.
+  - `commitImport(payload)`: lưu/ghi đè cả các dòng hợp lệ (`status = 'ready'`) lẫn dòng có lỗi dữ liệu chặn (`status = 'invalid'`, miễn là có `SO` ≤ 30 ký tự) được chọn vào bảng `gksk_certificates`, gắn với đợt import `gksk_import_batches` để khớp 100% quân số file Excel.
+- Tạo `server/src/routes/import.ts` (`createImportRouter`) và gắn vào `server/src/app.ts`:
+  - `GET /api/import/template`
+  - `POST /api/import/excel` (`multer` bộ nhớ `≤ 5 MB`, kiểm đuôi `.xlsx` và magic bytes `PK`)
+  - `POST /api/import/commit`
+- Viết bộ kiểm thử tích hợp Supertest & đơn vị `server/src/routes/import.test.ts` (6 nhóm ca kiểm thử lớn bao phủ toàn bộ 19 fixtures, ghi đè thông minh và round-trip file đối soát 29 cột của S10).
+- Viết và chạy script kiểm chứng `scripts/verify-S11.ts` sinh file mẫu thật `docs/evidence/S11/GKSK_mau_nhap_lieu.xlsx` và biên bản kiểm chứng luồng ghi đè thông minh + round-trip file đối soát 29 cột ra `docs/evidence/S11/smart-import-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server Services & Routes: `server/src/services/importService.ts`, `server/src/routes/import.ts`, `server/src/app.ts`, `server/src/routes/import.test.ts`.
+- Fixtures & Kiểm chứng: `tests/fixtures/make-fixtures.ts` (`tests/fixtures/*.xlsx`), `scripts/verify-S11.ts`.
+- Cấu hình: `server/package.json`, `package-lock.json`, `server/tsconfig.json`, `server/tsconfig.build.json`, `eslint.config.js`.
+
+### Bằng chứng bàn giao (`docs/evidence/S11/`)
+- `docs/evidence/S11/GKSK_mau_nhap_lieu.xlsx`: file Excel mẫu thực tế (2 sheet `GKSK` 23 cột định dạng Text `@` 2000 dòng đầu + dropdown validation và sheet `HuongDan` 25 trường sinh từ `FIELDS`).
+- `docs/evidence/S11/smart-import-report.md`: biên bản kiểm chứng cấu trúc file mẫu và mô phỏng khép kín luồng Import lần 1 (5 dòng) → Đẩy cổng → Xuất file Excel đối soát 29 cột → Sửa dòng lỗi/từ chối trực tiếp trên file đối soát 29 cột → Import lại lần 2 (6 cột đối soát tự động bỏ qua, phân loại đúng `accepted_unchanged`, `accepted_modified`, `overwrite_pending`, `new`) → Commit lần 2 thành công (0 rò rỉ PII trong log).
+- `docs/evidence/S11/verify-output.txt`: bản sao log báo cáo kiểm chứng S11.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 18/18 test files, 240/240 tests (`shared`: 145, `server`: 84 [6 import + 7 certificates/export + 9 send/job + 10 db repo + 17 client + 5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1, `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S11.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Toàn bộ 19 fixtures ở `TEST-PLAN.md §2.1` cho kết quả đúng (kể cả round-trip file Excel đối soát 29 cột và `big_1000.xlsx` < 10 s).
+- ✔ Có file mẫu thật `docs/evidence/S11/GKSK_mau_nhap_lieu.xlsx` và `docs/evidence/S11/smart-import-report.md`.
+- ✔ Báo cáo lỗi nêu **số dòng Excel** đúng (`rowNumber` giữ đúng số dòng Excel thật kể cả khi có dòng trống xen kẽ).
+- ✔ Không có dữ liệu cá nhân trong log (`pino` chỉ ghi số lượng thống kê an toàn).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S12 — Xác thực ứng dụng (server)** (`server/src/routes/auth.ts`, `server/src/middleware/{requireAuth,rateLimit}.ts`, phiên cookie `httpOnly`, `sameSite=lax`, kiểm tra `X-Requested-With: gksk` cho method ghi, `helmet`, cập nhật các test S9–S11 dùng phiên đăng nhập).
 
 ## [S10] API Danh sách đối soát, Chi tiết chỉ đọc, Xuất XML (`.xml` & `.zip`) và Xuất Excel đối soát — 2026-11-25 — Antigravity
 ### Đã làm
