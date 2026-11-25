@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S13 — Client: khung, đăng nhập, API layer**
-- Bước kế tiếp: **S14 — Client: trang Import Excel (ghi đè thông minh)**
+- Bước đã xong: **S14 — Client: trang Import Excel (ghi đè thông minh)**
+- Bước kế tiếp: **S15 — Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,51 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S14] Client: trang Import Excel (ghi đè thông minh) — 2026-11-25 — Antigravity
+### Đã làm
+- Tạo `client/src/components/IssueList.tsx`:
+  - Hiển thị danh sách lỗi chặn (`⛔` `error`), cảnh báo (`⚠️` `warning`) và thông tin (`ℹ️` `info`) kèm mã lỗi/cảnh báo và thông điệp tiếng Việt có dấu từ `formatIssueMessage(issue)` (`@gksk/shared`).
+- Tạo `client/src/pages/ImportPage.tsx` và cập nhật `client/src/App.tsx`, `client/src/App.css` (áp dụng chuẩn `modern-web-guidance`: `responsive-table`, `dialog`, `brand-consistent-forms`, `accessibility`):
+  - Nút **Tải file Excel mẫu** (`GKSK_mau_nhap_lieu.xlsx` qua `downloadImportTemplate()`) và vùng chọn / kéo-thả file `.xlsx` (`previewExcelImport(file)`).
+  - Hiển thị thông báo lỗi rõ ràng (`role="alert"`, kèm mã lỗi như `EXCEL_MISSING_REQUIRED_COLUMNS`) khi nạp file thiếu cột bắt buộc, sai định dạng hoặc vượt quá 1000 dòng, cùng banner cảnh báo cột lạ bị bỏ qua (`ignoredColumns`, ví dụ 6 cột đối soát khi import ngược lại file Excel đối soát 29 cột).
+  - 5 thẻ tóm tắt kết quả đọc file: Tổng số dòng đọc được (kèm số dòng đang chọn lưu), Hợp lệ (`ready`, tách rõ số dòng `✅` không cảnh báo và `⚠️` có cảnh báo), Lỗi dữ liệu (`invalid`, tách rõ dòng có `SO` vẫn lưu đối soát và dòng thiếu/trùng `SO`), Đối chiếu mới & Ghi đè bản chưa đẩy (`overwrite_pending` & `new`), Đã đẩy thành công lên Sở (`accepted_unchanged` không đổi / `accepted_modified` có sửa).
+  - 5 nút bộ lọc nhanh trên bảng xem trước: `Tất cả`, `Được chọn lưu`, `Có lỗi dữ liệu`, `Ghi đè`, `Đã đẩy thành công` (dùng `aria-pressed`).
+  - Bảng xem trước từng dòng hiển thị đầy đủ: Checkbox chọn lưu, Số dòng Excel (`#rowNumber`), `SO`, `HOTEN`, `NGAYSINH`, `KETLUAN`, huy hiệu trạng thái dữ liệu (`✅ Hợp lệ` / `⚠️ Có cảnh báo` / `⛔ Lỗi dữ liệu`), huy hiệu đối chiếu DB (`Mới` / `Ghi đè bản cũ` / `Đã đẩy - Không đổi` / `Đã đẩy - Có sửa` / `Thiếu / Sai mã SO`), và danh sách lỗi/cảnh báo tiếng Việt (`<IssueList />`).
+  - Tuân thủ đúng quy tắc chọn mặc định thông minh của `DATA-SPEC.md §5.2`: dòng `new` và `overwrite_pending` mặc định được chọn (kể cả dòng `invalid` có mã `SO` để lưu đủ 100% quân số đối soát); dòng `accepted_unchanged` và `accepted_modified` mặc định bỏ chọn; khi người dùng chủ động tick chọn dòng `accepted_modified` sẽ bật hộp thoại `<dialog>` bắt xác nhận ghi đè giấy đã đẩy thành công; dòng thiếu/quá dài `SO` hoặc bị trùng `SO` dòng trước bị khóa checkbox.
+  - Nút **Lưu vào Danh sách đối soát** gọi `commitExcelImport` (`POST /api/import/commit`) và tự động chuyển hướng sang trang Danh sách & Đối soát (`/?batchId=<batch.id>`). Tuyệt đối không có form nhập/sửa tay trên trang Import.
+- Viết bộ kiểm thử component `client/src/pages/ImportPage.test.tsx` (5 ca kiểm thử toàn diện bằng Vitest + Testing Library).
+- Khởi chạy `npm run dev:mock`, điều phối Browser Subagent nạp các file Excel mẫu trên trình duyệt thật (`http://127.0.0.1:5173/import`), kiểm tra 0 lỗi console & 0 lộ token CSYT trong Network, chụp đủ 4 ảnh màn hình thực tế lưu vào `docs/evidence/S14/`.
+- Viết và chạy script kiểm chứng `scripts/verify-S14.ts` xác nhận 4 file PNG hợp lệ và kiến trúc nguồn S14.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Client Pages & Components: `client/src/pages/ImportPage.tsx`, `client/src/components/IssueList.tsx`, `client/src/App.tsx`, `client/src/App.css`.
+- Kiểm thử & Kiểm chứng: `client/src/pages/ImportPage.test.tsx`, `scripts/verify-S14.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S14/`)
+- `docs/evidence/S14/01-import-upload.png`: giao diện trang Import Excel với nút Tải file mẫu (`GKSK_mau_nhap_lieu.xlsx`) và vùng chọn / kéo-thả file `.xlsx`.
+- `docs/evidence/S14/02-import-preview-mixed.png`: bảng xem trước khi nạp file có đủ cả dòng Hợp lệ (`✅`), Có cảnh báo (`⚠️`), Lỗi dữ liệu có mã `SO` (`⛔`, mặc định tick chọn lưu để đối soát 100% quân số) và dòng trống `SO` (`⛔`, khóa checkbox).
+- `docs/evidence/S14/03-import-preview-smart-overwrite.png`: bảng xem trước khi Import lại file Excel đã sửa (`reimport_overwrite.xlsx`) thể hiện rõ dòng `Ghi đè bản cũ` tự động tick chọn, dòng `Đã đẩy - Không đổi` tự động bỏ chọn, và dòng `Đã đẩy - Có sửa` tự động bỏ chọn kèm cảnh báo vàng `LOCAL_SO_ACCEPTED_MODIFIED`.
+- `docs/evidence/S14/04-import-missing-col-error.png`: thông báo lỗi rõ ràng (`EXCEL_MISSING_REQUIRED_COLUMNS`) liệt kê tên cột thiếu (`KETLUAN`) khi nạp file thiếu cột bắt buộc.
+- `docs/evidence/S14/verify-output.txt`: biên bản kiểm chứng 4 ảnh PNG và mã nguồn S14.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd run build -w @gksk/client`: PASS.
+- `npm.cmd test`: PASS — 21/21 test files, 256/256 tests (`shared`: 145, `server`: 89, `client`: 12 [4 http + 5 ImportPage/IssueList + 3 App], `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S14.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 256/256 PASS, 0 skip/only).
+- ✔ Có đủ 4 ảnh chụp màn hình thực tế trong `docs/evidence/S14/` (`01-import-upload.png`, `02-import-preview-mixed.png`, `03-import-preview-smart-overwrite.png`, `04-import-missing-col-error.png`) cùng `verify-output.txt`.
+- ✔ Không có form nhập/sửa tay trên trang Import.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S15 — Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát** (`client/src/pages/ListPage.tsx`, `client/src/components/{ReconcileSummary,StatusBadge}.tsx`), thay thế `<ReconcileListPlaceholder />` tại route `/` trong `client/src/App.tsx` và đọc tham số `?batchId=` trên URL khi chuyển từ trang Import Excel sang.
 
 ## [S13] Client: khung, đăng nhập, API layer — 2026-11-25 — Antigravity
 ### Đã làm

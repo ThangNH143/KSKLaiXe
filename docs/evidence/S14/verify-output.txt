@@ -1,0 +1,19 @@
+# Báo cáo kiểm chứng bước S14 — Client: trang Import Excel (ghi đè thông minh)
+
+## 1. Kiểm tra 4 ảnh chụp màn hình thực tế (Browser Subagent trên dev:mock)
+- ✅ `docs/evidence/S14/01-import-upload.png`: 86830 bytes (1024x760 px, PNG hợp lệ)
+- ✅ `docs/evidence/S14/02-import-preview-mixed.png`: 233378 bytes (1024x946 px, PNG hợp lệ)
+- ✅ `docs/evidence/S14/03-import-preview-smart-overwrite.png`: 249488 bytes (988x1024 px, PNG hợp lệ)
+- ✅ `docs/evidence/S14/04-import-missing-col-error.png`: 96937 bytes (1024x760 px, PNG hợp lệ)
+
+## 2. Kiểm tra kiến trúc mã nguồn `client/src` cho S14
+- ✅ `client/src/pages/ImportPage.tsx` (35469 bytes)
+- ✅ `client/src/components/IssueList.tsx` (2423 bytes)
+- ✅ `client/src/pages/ImportPage.test.tsx` (18086 bytes)
+- ✅ `client/src/App.tsx` (9942 bytes)
+- ✅ `client/src/App.css` (26876 bytes)
+- ✅ `ImportPage.tsx` tích hợp đầy đủ tải mẫu `GKSK_mau_nhap_lieu.xlsx`, kéo-thả/chọn `.xlsx`, 5 thẻ tóm tắt, 5 bộ lọc nhanh, bảng xem trước, mặc định chọn thông minh theo `DATA-SPEC §5.2`, hộp xác nhận `accepted_modified`, và lưu chuyển về `/?batchId=<id>`.
+- ✅ Quét toàn bộ `client/src`: 0 form nhập/sửa tay trên web (`EntryPage`, `CertificateForm`, `react-hook-form`), 0 lộ bí mật server.
+
+## 3. Kết luận
+- **100% hạng mục kiểm chứng bước S14 ĐẠT (PASS).**

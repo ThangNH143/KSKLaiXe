@@ -17,9 +17,14 @@ import {
   type PublicConfig,
 } from './api';
 import { EnvBanner } from './components/EnvBanner';
+import { ImportPage } from './pages/ImportPage';
 import { LoginPage } from './pages/LoginPage';
 
 function ReconcileListPlaceholder({ config }: { config: PublicConfig | null }) {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const batchIdParam = searchParams.get('batchId');
+
   return (
     <section className="workspace-panel">
       <div className="panel-heading-row">
@@ -36,6 +41,16 @@ function ReconcileListPlaceholder({ config }: { config: PublicConfig | null }) {
           Đi tới Import Excel
         </Link>
       </div>
+
+      {batchIdParam && (
+        <div
+          className="alert-banner alert-info"
+          role="status"
+          data-testid="active-batch-filter-banner"
+        >
+          Đang lọc đối soát theo <strong>Đợt import #{batchIdParam}</strong> vừa lưu từ trang Import Excel.
+        </div>
+      )}
 
       <div className="summary-grid" aria-label="Tổng quan 4 nhóm đối soát">
         <div className="summary-tile tile-all">
@@ -72,34 +87,6 @@ function ReconcileListPlaceholder({ config }: { config: PublicConfig | null }) {
             {config.facilityName}).
           </span>
         )}
-      </div>
-    </section>
-  );
-}
-
-function ImportExcelPlaceholder() {
-  return (
-    <section className="workspace-panel">
-      <div className="panel-heading-row">
-        <div>
-          <h1 id="page-heading" tabIndex={-1}>
-            Import Excel GKSK Lái xe
-          </h1>
-          <p className="panel-subtitle">
-            Tải file Excel mẫu chuẩn 23 cột BHXH, kiểm tra lỗi từng dòng trước khi
-            lưu và tự động đối chiếu ghi đè thông minh theo mã <code>SO</code>.
-          </p>
-        </div>
-        <Link to="/" className="btn-secondary">
-          Quay lại Danh sách &amp; Đối soát
-        </Link>
-      </div>
-
-      <div className="info-callout">
-        Khung trang <strong>Import Excel</strong> đã sẵn sàng kết nối tầng API (
-        <code>GET /api/import/template</code>, <code>POST /api/import/excel</code>,{' '}
-        <code>POST /api/import/commit</code>). Giao diện tải file và bảng xem trước
-        ghi đè thông minh sẽ được hoàn thiện ở bước kế tiếp (S14).
       </div>
     </section>
   );
@@ -199,7 +186,7 @@ function AuthenticatedShell({
       <main id="main-content" className="workspace-main">
         <Routes>
           <Route path="/" element={<ReconcileListPlaceholder config={config} />} />
-          <Route path="/import" element={<ImportExcelPlaceholder />} />
+          <Route path="/import" element={<ImportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
