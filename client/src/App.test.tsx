@@ -155,6 +155,7 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
   });
 
   it('3. Khi phiên hết hạn (HTTP 401 từ API nghiệp vụ) tự động chuyển về trang đăng nhập và hiển thị thông báo', async () => {
+    let certCalls = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url === '/api/config') {
@@ -171,6 +172,29 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
         );
       }
       if (url.startsWith('/api/certificates')) {
+        certCalls += 1;
+        if (certCalls === 1) {
+          return jsonResponse(
+            {
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 20,
+              counts: {
+                all: 0,
+                unsent: 0,
+                accepted: 0,
+                attention: 0,
+                ready: 0,
+                invalid: 0,
+                rejected: 0,
+                error: 0,
+                sending: 0,
+              },
+            },
+            200,
+          );
+        }
         return jsonResponse(
           {
             error: {

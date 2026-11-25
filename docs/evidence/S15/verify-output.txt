@@ -1,0 +1,21 @@
+# Báo cáo kiểm chứng bước S15 — Client: trang Danh sách & Đối soát, Xuất XML (.xml/.zip) và Xuất Excel đối soát
+
+## 1. Kiểm tra 4 ảnh chụp màn hình thực tế (Browser Subagent trên dev:mock)
+- ✅ `docs/evidence/S15/01-reconcile-tab-all.png`: 252657 bytes (971x1024 px, PNG hợp lệ)
+- ✅ `docs/evidence/S15/02-reconcile-tab-accepted.png`: 214614 bytes (971x1024 px, PNG hợp lệ)
+- ✅ `docs/evidence/S15/03-reconcile-tab-attention.png`: 259573 bytes (971x1024 px, PNG hợp lệ)
+- ✅ `docs/evidence/S15/04-batch-filter-and-search.png`: 180283 bytes (971x1024 px, PNG hợp lệ)
+
+## 2. Kiểm tra kiến trúc mã nguồn `client/src` cho S15
+- ✅ `client/src/pages/ListPage.tsx` (35365 bytes)
+- ✅ `client/src/components/ReconcileSummary.tsx` (6306 bytes)
+- ✅ `client/src/components/StatusBadge.tsx` (1645 bytes)
+- ✅ `client/src/pages/ListPage.test.tsx` (15063 bytes)
+- ✅ `client/src/App.tsx` (6865 bytes)
+- ✅ `client/src/App.css` (32457 bytes)
+- ✅ `ListPage.tsx` tích hợp đầy đủ 4 thẻ thống kê, 4 tab lọc nhanh (`all`, `unsent`, `accepted`, `attention` kèm 3 bộ lọc con), lọc theo Đợt import Excel / ngày / từ khóa, phân trang, nút Xuất Excel đối soát 29 cột, Tải XML (.zip) và Tải `<SO>.xml` lẻ (khóa với dòng `invalid`).
+- ✅ Quét `ListPage.tsx`: 0 hiển thị 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`).
+- ✅ Quét toàn bộ `client/src`: 0 form nhập/sửa tay trên web (`EntryPage`, `CertificateForm`, `react-hook-form`), 0 lộ bí mật server.
+
+## 3. Kết luận
+- **100% hạng mục kiểm chứng bước S15 ĐẠT (PASS).**

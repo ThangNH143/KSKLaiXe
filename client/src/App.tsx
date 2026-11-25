@@ -18,79 +18,8 @@ import {
 } from './api';
 import { EnvBanner } from './components/EnvBanner';
 import { ImportPage } from './pages/ImportPage';
+import { ListPage } from './pages/ListPage';
 import { LoginPage } from './pages/LoginPage';
-
-function ReconcileListPlaceholder({ config }: { config: PublicConfig | null }) {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const batchIdParam = searchParams.get('batchId');
-
-  return (
-    <section className="workspace-panel">
-      <div className="panel-heading-row">
-        <div>
-          <h1 id="page-heading" tabIndex={-1}>
-            Danh sách &amp; Đối soát GKSK Lái xe
-          </h1>
-          <p className="panel-subtitle">
-            Theo dõi 100% quân số đã nạp từ Excel theo 4 nhóm trạng thái đối soát,
-            xuất file XML lẻ / gói ZIP và đẩy cổng Sở Y tế Đồng Nai.
-          </p>
-        </div>
-        <Link to="/import" className="btn-primary">
-          Đi tới Import Excel
-        </Link>
-      </div>
-
-      {batchIdParam && (
-        <div
-          className="alert-banner alert-info"
-          role="status"
-          data-testid="active-batch-filter-banner"
-        >
-          Đang lọc đối soát theo <strong>Đợt import #{batchIdParam}</strong> vừa lưu từ trang Import Excel.
-        </div>
-      )}
-
-      <div className="summary-grid" aria-label="Tổng quan 4 nhóm đối soát">
-        <div className="summary-tile tile-all">
-          <span className="summary-tile-label">Tất cả giấy đã nạp</span>
-          <strong className="summary-tile-value">0</strong>
-          <span className="summary-tile-note">Khớp 100% quân số có mã SO</span>
-        </div>
-        <div className="summary-tile tile-ready">
-          <span className="summary-tile-label">Chưa đẩy (Sẵn sàng)</span>
-          <strong className="summary-tile-value">0</strong>
-          <span className="summary-tile-note">Đủ điều kiện xuất XML &amp; đẩy cổng</span>
-        </div>
-        <div className="summary-tile tile-accepted">
-          <span className="summary-tile-label">Đã đẩy thành công</span>
-          <strong className="summary-tile-value">0</strong>
-          <span className="summary-tile-note">Đã ghi nhận trên Hệ thống Sở</span>
-        </div>
-        <div className="summary-tile tile-attention">
-          <span className="summary-tile-label">Cần xử lý</span>
-          <strong className="summary-tile-value">0</strong>
-          <span className="summary-tile-note">Lỗi Excel · Sở từ chối · Lỗi mạng</span>
-        </div>
-      </div>
-
-      <div className="info-callout">
-        <strong>Quy trình làm việc chuẩn (không nhập tay trên web):</strong>{' '}
-        Mọi dữ liệu giấy khám sức khỏe đều được nạp từ file Excel mẫu tại mục{' '}
-        <Link to="/import">Import Excel</Link>. Khi có dòng lỗi, tải file Excel
-        đối soát 29 cột để chỉnh sửa rồi Import đè lại theo mã <code>SO</code>.
-        {config && (
-          <span>
-            {' '}
-            Đang kết nối CSYT <strong>{config.facilityId}</strong> (
-            {config.facilityName}).
-          </span>
-        )}
-      </div>
-    </section>
-  );
-}
 
 interface AuthenticatedShellProps {
   config: PublicConfig | null;
@@ -185,7 +114,7 @@ function AuthenticatedShell({
 
       <main id="main-content" className="workspace-main">
         <Routes>
-          <Route path="/" element={<ReconcileListPlaceholder config={config} />} />
+          <Route path="/" element={<ListPage config={config} />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

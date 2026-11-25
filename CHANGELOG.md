@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S14 — Client: trang Import Excel (ghi đè thông minh)**
-- Bước kế tiếp: **S15 — Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát**
+- Bước đã xong: **S15 — Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát**
+- Bước kế tiếp: **S16 — Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,53 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S15] Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát — 2026-11-25 — Antigravity
+### Đã làm
+- Tạo `client/src/components/StatusBadge.tsx`:
+  - Hiển thị huy hiệu trạng thái đối soát tiếng Việt cho 6 trạng thái theo `docs/ARCHITECTURE.md §8`: `ready` (`🟦 Chờ đẩy cổng`), `accepted` (`✅ Đã đẩy thành công`), `invalid` (`⛔ Lỗi dữ liệu Excel`), `rejected` (`⛔ Cổng Sở từ chối`), `error` (`⚠️ Lỗi mạng / Cấu hình`), `sending` (`⏳ Đang đẩy...`).
+- Tạo `client/src/components/ReconcileSummary.tsx`:
+  - Hiển thị 4 thẻ thống kê số lượng trực tiếp (`Tất cả`, `Chưa đẩy (Sẵn sàng)`, `Đã đẩy thành công`, `Cần xử lý`) và thanh 4 Tab lọc nhanh (`role="tablist"`, `aria-selected`, chỉ báo đường gạch dưới `::after` 3px theo guide `tabs` của `modern-web-guidance`).
+  - Khi ở tab **Cần xử lý** (`attention`), hiển thị thanh bộ lọc con gồm 4 nút (`Tất cả cần xử lý`, `⛔ Lỗi dữ liệu Excel`, `⛔ Cổng Sở từ chối`, `⚠️ Lỗi mạng / Cấu hình`).
+- Tạo `client/src/pages/ListPage.tsx` và cập nhật `client/src/App.tsx`, `client/src/App.css`:
+  - Bộ lọc đối soát theo **Đợt import (file Excel)** (`batchId` từ `GET /api/batches`, tự nhận `?batchId=` trên URL khi chuyển từ trang Import Excel sang), khoảng ngày (`fromDate`, `toDate`), ô tìm kiếm (`SO`, `HOTEN`, `SOCMND_PASSPORT`) và thanh phân trang (`page`, `pageSize`).
+  - Các nút công cụ Xuất dữ liệu & Đối soát:
+    - Nút **📊 Xuất Excel đối soát (29 cột)** (`GET /api/certificates/export-excel` theo đúng bộ lọc hiện tại).
+    - Nút **📦 Tải XML (.zip)** (`POST /api/certificates/xml-zip` cho các dòng hợp lệ được tick chọn).
+    - Nút **Tải `<SO>.xml`** lẻ (`GET /api/certificates/:id/xml`) và nút **Đẩy cổng** trên từng dòng (vô hiệu hóa hoàn toàn đối với dòng `invalid`).
+  - Bảng danh sách đối soát tuyệt đối **không** hiển thị 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`); hiển thị rõ lỗi từ chối từ Hệ thống Sở (`latestSubmission.errors`), cảnh báo (`GKSK_UNSIGNED` ở mức thông tin `ℹ️`), lỗi mạng (`lastError`) và lỗi kiểm tra dữ liệu (`issues`) bằng tiếng Việt qua `<IssueList />`.
+- Viết bộ kiểm thử component `client/src/pages/ListPage.test.tsx` (4 nhóm ca kiểm thử toàn diện bằng Vitest + Testing Library) và cập nhật `client/src/App.test.tsx`.
+- Khởi chạy `dev:mock` với 2 đợt import mẫu và 6 giấy GKSK đại diện cho mọi trạng thái đối soát, điều phối Browser Subagent thao tác trên trình duyệt thật (`http://127.0.0.1:5173/`) ở độ phân giải desktop `1280x1350`, kiểm tra 0 lỗi console, 0 lộ token CSYT trong Network, 0 hiển thị trường nhạy cảm trên DOM và chụp đủ 4 ảnh màn hình thực tế lưu vào `docs/evidence/S15/`.
+- Viết và chạy script kiểm chứng `scripts/verify-S15.ts` xác nhận 4 file PNG hợp lệ và kiến trúc nguồn S15.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Client Pages & Components: `client/src/pages/ListPage.tsx`, `client/src/components/ReconcileSummary.tsx`, `client/src/components/StatusBadge.tsx`, `client/src/App.tsx`, `client/src/App.css`.
+- Kiểm thử & Kiểm chứng: `client/src/pages/ListPage.test.tsx`, `client/src/App.test.tsx`, `scripts/verify-S15.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S15/`)
+- `docs/evidence/S15/01-reconcile-tab-all.png`: toàn cảnh trang Danh sách & Đối soát ở tab **Tất cả** với 4 thẻ thống kê số lượng (`6`, `1`, `2`, `3`), bộ lọc Đợt import Excel, các nút `📊 Xuất Excel đối soát (29 cột)` / `📦 Tải XML (.zip) (5)` và bảng danh sách 8 cột.
+- `docs/evidence/S15/02-reconcile-tab-accepted.png`: tab **Đã đẩy thành công** hiển thị 2 giấy đã đẩy kèm huy hiệu xanh `✅ Đã đẩy thành công`, `msg_id`, `ID Sở` và mã cảnh báo thông tin `GKSK_UNSIGNED`.
+- `docs/evidence/S15/03-reconcile-tab-attention.png`: tab **Cần xử lý** hiển thị thanh bộ lọc con và 3 giấy cần xử lý (`Lỗi mạng / Cấu hình`, `Cổng Sở từ chối` kèm `GKSK_FACILITY_MISMATCH`, và `Lỗi dữ liệu Excel` khóa nút tải XML & đẩy cổng).
+- `docs/evidence/S15/04-batch-filter-and-search.png`: minh họa lọc đối soát theo **Đợt #1 — DS_KSK_LaiXe_Dot1_23112026.xlsx (4 dòng)** kết hợp tìm kiếm `TRAN THI BINH` và thông báo tải thành công file XML lẻ `00002_GKSKLX_75001_26.xml`.
+- `docs/evidence/S15/verify-output.txt`: biên bản kiểm chứng 4 ảnh PNG và mã nguồn S15.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd run build -w @gksk/client`: PASS.
+- `npm.cmd test`: PASS — 22/22 test files, 260/260 tests (`shared`: 145, `server`: 89, `client`: 16 [4 http + 5 ImportPage + 4 ListPage/ReconcileSummary/StatusBadge + 3 App], `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S15.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 260/260 PASS, 0 skip/only).
+- ✔ Có đủ 4 ảnh chụp màn hình thực tế trong `docs/evidence/S15/` (`01-reconcile-tab-all.png`, `02-reconcile-tab-accepted.png`, `03-reconcile-tab-attention.png`, `04-batch-filter-and-search.png`) cùng `verify-output.txt`.
+- ✔ Bảng danh sách không hiển thị trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`).
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S16 — Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc** (`client/src/components/{CertificateDetailDrawer,XmlPreview}.tsx`, tích hợp luồng Đẩy cổng đơn/hàng loạt với hộp xác nhận `production`, polling tiến độ `jobId` 1 s, nút Gửi lại / Tra trạng thái và mở Drawer chi tiết chỉ đọc 25 trường + XML + lịch sử gửi khi bấm vào dòng trên `ListPage.tsx`).
 
 ## [S14] Client: trang Import Excel (ghi đè thông minh) — 2026-11-25 — Antigravity
 ### Đã làm

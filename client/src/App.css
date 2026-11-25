@@ -1337,6 +1337,16 @@ dialog::backdrop {
     --label-9: 'Lỗi / Cảnh báo';
   }
 
+  .reconcile-table {
+    --label-2: 'Số giấy (SO) & Đợt Import';
+    --label-3: 'Họ tên & Ngày sinh';
+    --label-4: 'Số CMND/CCCD';
+    --label-5: 'Khám & Kết luận';
+    --label-6: 'Trạng thái đối soát';
+    --label-7: 'Lỗi / Cảnh báo';
+    --label-8: 'Thao tác';
+  }
+
   .preview-table td:nth-child(2)::before {
     content: var(--label-2) ': ';
     font-weight: 700;
@@ -1369,4 +1379,285 @@ dialog::backdrop {
     content: var(--label-9) ': ';
     font-weight: 700;
   }
+}
+
+/* ==========================================================================
+   S15 — ListPage, ReconcileSummary (Tabs & Cards), StatusBadge & Filter Bar
+   ========================================================================== */
+.reconcile-summary-container {
+  margin-block-end: 1.15rem;
+}
+
+.reconcile-cards-grid {
+  margin-block-end: 0.9rem;
+}
+
+.summary-tile-active {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+/* Tabbed interface (tabs guide — single row horizontal scroll + [aria-selected="true"]::after) */
+.reconcile-tablist {
+  display: flex;
+  overflow-x: auto;
+  gap: 0.35rem;
+  border-block-end: 2px solid var(--color-border-subtle);
+  margin-block-end: 0.85rem;
+}
+
+.reconcile-tab-btn {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 2.65rem;
+  padding: 0.55rem 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reconcile-tab-btn:hover {
+  color: var(--color-text);
+  background: #f8fafc;
+}
+
+.reconcile-tab-btn[aria-selected='true'] {
+  color: var(--color-primary);
+}
+
+.reconcile-tab-btn[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  border-block-end: 3px solid var(--color-primary);
+}
+
+.reconcile-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.5rem;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.reconcile-tab-btn[aria-selected='true'] .reconcile-tab-badge {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.attention-subfilter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.625rem;
+  background: #fffafa;
+  border: 1px solid #fecaca;
+  margin-block-end: 0.85rem;
+}
+
+.attention-subfilter-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--color-danger-dark);
+}
+
+/* Filter Bar */
+.reconcile-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.2fr) minmax(135px, 0.7fr) minmax(135px, 0.7fr) minmax(280px, 1.8fr);
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.9rem 1rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border-subtle);
+  margin-block-end: 1rem;
+}
+
+@media (max-width: 960px) {
+  .reconcile-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .filter-control-search {
+    grid-column: 1 / -1;
+  }
+}
+
+.filter-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.filter-control label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.filter-control select,
+.filter-control input {
+  min-block-size: 2.4rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: #ffffff;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.86rem;
+}
+
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.search-input-row input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* StatusBadge variants (ARCHITECTURE.md §8) */
+.cert-badge-ready {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.cert-badge-accepted {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.cert-badge-invalid {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.cert-badge-rejected {
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fda4af;
+}
+
+.cert-badge-error {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.cert-badge-sending {
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+
+/* Reconcile Table cells */
+.reconcile-table .col-select {
+  inline-size: 3.75rem;
+}
+
+.reconcile-table .col-so {
+  inline-size: 11rem;
+  white-space: normal;
+}
+
+.reconcile-table .col-hoten {
+  inline-size: 9.5rem;
+}
+
+.reconcile-table .col-issues {
+  min-inline-size: 14.5rem;
+}
+
+.cert-so-cell,
+.cert-person-cell,
+.cert-exam-cell,
+.cert-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cert-batch-meta,
+.cert-sub-meta,
+.cert-msgid-meta {
+  font-size: 0.73rem;
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.col-id-card {
+  inline-size: 6.25rem;
+  white-space: nowrap;
+}
+
+.col-exam {
+  inline-size: 8rem;
+  white-space: nowrap;
+}
+
+.col-status {
+  inline-size: 9.5rem;
+  white-space: nowrap;
+}
+
+.col-actions {
+  inline-size: 8.25rem;
+  white-space: nowrap;
+}
+
+.row-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.btn-sm {
+  min-block-size: 2rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+  border-radius: 0.4rem;
+}
+
+.btn-secondary:disabled,
+.btn-ghost:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-block-start: 0.9rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.65rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border-subtle);
+  font-size: 0.85rem;
+}
+
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
