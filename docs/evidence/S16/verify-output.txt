@@ -1,0 +1,21 @@
+# Báo cáo kiểm chứng bước S16 — Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc
+
+## 1. Kiểm tra 5 ảnh chụp màn hình thực tế (Browser Subagent trên dev:mock)
+- ✅ `docs/evidence/S16/01-batch-send-confirm-and-progress.png`: 167958 bytes (1024x720 px, PNG hợp lệ)
+- ✅ `docs/evidence/S16/02-drawer-tab-25-fields.png`: 227968 bytes (1024x768 px, PNG hợp lệ)
+- ✅ `docs/evidence/S16/03-drawer-tab-xml-preview.png`: 205344 bytes (1024x768 px, PNG hợp lệ)
+- ✅ `docs/evidence/S16/04-drawer-tab-submission-history.png`: 177456 bytes (1024x720 px, PNG hợp lệ)
+- ✅ `docs/evidence/S16/05-retry-same-msgid.png`: 173605 bytes (1024x768 px, PNG hợp lệ)
+
+## 2. Kiểm tra kiến trúc mã nguồn `client/src` cho S16
+- ✅ `client/src/components/CertificateDetailDrawer.tsx` (30806 bytes)
+- ✅ `client/src/components/XmlPreview.tsx` (9109 bytes)
+- ✅ `client/src/pages/ListPage.tsx` (63150 bytes)
+- ✅ `client/src/pages/ListPage.test.tsx` (41117 bytes)
+- ✅ `client/src/App.css` (43917 bytes)
+- ✅ `ListPage.tsx` tích hợp đầy đủ nút Đẩy cổng hàng loạt, hộp thoại xác nhận `<dialog>` (kèm cảnh báo đỏ khi `APP_ENV=production`), thanh tiến độ `jobId` (polling 1s), các nút thao tác nhanh trên dòng (`Chi tiết`, `Tải <SO>.xml`, `Đẩy cổng` / `🔄 Gửi lại`, `Tra trạng thái`) và giữ nguyên quy tắc ẩn 4 trường nhạy cảm.
+- ✅ `CertificateDetailDrawer.tsx` & `XmlPreview.tsx` hiển thị đủ 3 Tab: Tab 1 (25 trường chỉ đọc, tách nhóm riêng 4 trường nhạy cảm `NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH` + hướng dẫn sửa trên Excel), Tab 2 (Xem trước XML + Sao chép XML + Tải `<SO>.xml`), Tab 3 (Lịch sử đẩy cổng + nút Tra lại trạng thái + huy hiệu giữ nguyên `msg_id` khi gửi lại).
+- ✅ Quét toàn bộ `client/src`: 0 form nhập/sửa tay trên web (`EntryPage`, `CertificateForm`, `react-hook-form`), 0 lộ bí mật server.
+
+## 3. Kết luận
+- **100% hạng mục kiểm chứng bước S16 ĐẠT (PASS).**

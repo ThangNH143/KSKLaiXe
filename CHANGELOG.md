@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S15 — Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát**
-- Bước kế tiếp: **S16 — Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc**
+- Bước đã xong: **S16 — Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc**
+- Bước kế tiếp: **S17 — Hardening và E2E trên mock**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,55 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S16] Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc — 2026-11-25 — Antigravity
+### Đã làm
+- Tạo `client/src/components/XmlPreview.tsx` (áp dụng chuẩn `copy-button` từ `modern-web-guidance`):
+  - Hiển thị mã nguồn XML chuẩn 25 thẻ theo thứ tự bảng BHXH (gốc `<root>`, UTF-8 không BOM, không DOCTYPE) kèm mã băm `dataSha256`.
+  - Nút **Sao chép XML** sử dụng `command="--copy"`, `commandfor`, `navigator.clipboard.writeText` kèm `legacyCopy` fallback và live region `role="status"` đặt ngoài nút (ẩn/hiện bằng `opacity`).
+  - Nút **Tải `<SO>.xml`** (`downloadCertificateXml`) tự động ẩn/chặn khi giấy đang ở trạng thái `invalid`.
+- Tạo `client/src/components/CertificateDetailDrawer.tsx` (áp dụng chuẩn `tabs` từ `modern-web-guidance`):
+  - Mở ngăn trượt (Drawer) bên phải ngay trên trang Danh sách mà không làm mất bộ lọc hay vị trí cuộn của bảng đối soát.
+  - **Tab 1 — Thông tin giấy (25 trường chỉ đọc) & Lỗi/Cảnh báo**: hiển thị danh sách lỗi/cảnh báo tiếng Việt (`<IssueList />`), hướng dẫn chỉnh sửa trên file Excel gốc hoặc file Excel đối soát 29 cột rồi Import đè theo `SO`, nhóm riêng nổi bật **🔒 4 trường thông tin y tế nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`)**, và nhóm 21 trường thông tin hành chính/khám/kết luận.
+  - **Tab 2 — Xem trước XML (`XmlPreview`)**: mã nguồn XML, Sao chép XML, Tải `<SO>.xml`.
+  - **Tab 3 — Lịch sử đẩy cổng**: bảng lịch sử các lần gửi (`msg_id`, số lần thử, huy hiệu `🔄 Giữ nguyên msg_id khi gửi lại` khi `attempts > 1`, thời gian gửi/hoàn tất theo giờ Việt Nam `UTC+7`, HTTP status & `res_code`, kết quả `accepted`/`rejected`, `server_submission_id`, `server_certificate_id`, lỗi/cảnh báo tiếng Việt và nút **🔍 Tra lại trạng thái** gọi `POST /api/submissions/:id/refresh`).
+- Hoàn thiện `client/src/pages/ListPage.tsx` và `client/src/App.css` (áp dụng chuẩn `dialog` & `prevent-page-scroll-under-modal-dialog` từ `modern-web-guidance`):
+  - Nút **🚀 Đẩy cổng các giấy đã chọn** mở hộp thoại xác nhận `<dialog>` (khi `APP_ENV=production` hiển thị hộp cảnh báo đỏ bắt buộc tick xác nhận trước khi gửi).
+  - Thanh tiến độ đẩy cổng hàng loạt theo `jobId` (polling `GET /api/jobs/:jobId` mỗi 1 giây) hiển thị trực quan phần trăm hoàn thành, 4 bộ đếm (`Đã xử lý`, `✅ Thành công`, `⛔ Sở từ chối`, `⚠️ Lỗi mạng / Cấu hình`), trạng thái từng giấy và tự động làm mới bảng + thẻ số đếm đối soát khi hoàn tất.
+  - Các nút thao tác nhanh trên từng dòng: **Chi tiết** (hoặc bấm trực tiếp vào dòng / mã `SO` để mở Drawer), **Tải `<SO>.xml`**, **Đẩy cổng** / **🔄 Gửi lại** (khi lỗi mạng, giữ nguyên `msg_id`), và **Tra trạng thái**.
+- Mở rộng bộ kiểm thử component `client/src/pages/ListPage.test.tsx` (thêm 4 ca kiểm thử lớn cho S16, tổng cộng 8 ca kiểm thử trên `ListPage.test.tsx` và 20 ca kiểm thử trên `@gksk/client`).
+- Khởi chạy môi trường `dev:mock` thực tế, điều phối Browser Subagent thao tác toàn bộ luồng S16 trên trình duyệt thật (`http://127.0.0.1:5173/`), xác nhận 0 lỗi console, 0 lộ token CSYT trong Network và chụp đủ 5 ảnh màn hình thực tế lưu vào `docs/evidence/S16/`.
+- Viết và chạy script kiểm chứng `scripts/verify-S16.ts` xác nhận 5 file PNG hợp lệ và kiến trúc nguồn S16.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Client Components & Pages: `client/src/components/CertificateDetailDrawer.tsx`, `client/src/components/XmlPreview.tsx`, `client/src/pages/ListPage.tsx`, `client/src/App.css`.
+- Kiểm thử & Kiểm chứng: `client/src/pages/ListPage.test.tsx`, `scripts/verify-S16.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S16/`)
+- `docs/evidence/S16/01-batch-send-confirm-and-progress.png`: hộp thoại xác nhận đẩy cổng hàng loạt và thanh tiến độ đang chạy trực tiếp (`20% (1/5 giấy)`, bộ đếm Đã xử lý / Thành công / Sở từ chối / Lỗi mạng).
+- `docs/evidence/S16/02-drawer-tab-25-fields.png`: Ngăn trượt (Drawer) mở bên phải bảng Đối soát — Tab 1 hiển thị lỗi/cảnh báo tiếng Việt, hướng dẫn sửa trên file Excel, nhóm riêng 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`) và 21 trường hành chính/khám.
+- `docs/evidence/S16/03-drawer-tab-xml-preview.png`: Drawer — Tab 2 hiển thị khung Xem trước XML (`XmlPreview`) kèm xác nhận `✓ Đã sao chép XML` và nút `Tải TEST.75001.0001.xml`.
+- `docs/evidence/S16/04-drawer-tab-submission-history.png`: Drawer — Tab 3 hiển thị bảng Lịch sử các lần đẩy cổng (`msg_id`, `server_submission_id`, `server_certificate_id`, thời gian `UTC+7`, `HTTP 200 · CM_SUCCESS`, `✅ accepted`) kèm thông báo sau khi bấm nút `🔍 Tra lại trạng thái`.
+- `docs/evidence/S16/05-retry-same-msgid.png`: minh họa giấy `TEST.75001.RETRY.05` gặp lỗi mạng tạm thời sau khi bấm `🔄 Gửi lại` thành công giữ nguyên `msg_id` (`75001261125e8f9a0b1c2d34e5f890123456789abcd`, `Số lần thử: 2`, huy hiệu `🔄 Giữ nguyên msg_id khi gửi lại`).
+- `docs/evidence/S16/verify-output.txt`: biên bản kiểm chứng 5 ảnh PNG và mã nguồn S16.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd run build -w @gksk/client`: PASS.
+- `npm.cmd test`: PASS — 22/22 test files, 264/264 tests (`shared`: 145, `server`: 89, `client`: 20 [4 http + 5 ImportPage + 8 ListPage/Drawer/XmlPreview/BatchSend + 3 App], `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S16.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 264/264 PASS, 0 skip/only).
+- ✔ Có đủ 5 ảnh chụp màn hình thực tế trong `docs/evidence/S16/` (`01-batch-send-confirm-and-progress.png`, `02-drawer-tab-25-fields.png`, `03-drawer-tab-xml-preview.png`, `04-drawer-tab-submission-history.png`, `05-retry-same-msgid.png`) cùng `verify-output.txt`.
+- ✔ Toàn bộ luồng Import → Đối soát → Xem Drawer & XML → Đẩy cổng → Lịch sử chạy trơn tru trên trình duyệt.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S17 — Hardening và E2E trên mock** (`tests/e2e/*` bằng Playwright cho 3 luồng chính, `docs/SECURITY-CHECKLIST.md`, kiểm tra hiệu năng import 1000 dòng < 10 s, quét log E2E không rò rỉ PII/bí mật, `npm audit --omit=dev` và `scripts/verify-S17.ts`).
 
 ## [S15] Client: trang Danh sách & Đối soát, Xuất XML (`.xml`/`.zip`) và Xuất Excel đối soát — 2026-11-25 — Antigravity
 ### Đã làm

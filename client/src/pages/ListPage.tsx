@@ -3,24 +3,35 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
+  type MouseEvent,
 } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { IssueSeverity, ReconcileTab } from '@gksk/shared';
+import type { CertificateStatus, IssueSeverity, ReconcileTab } from '@gksk/shared';
 import {
   ApiError,
   downloadCertificateXml,
   downloadCertificatesXmlZip,
   downloadReconcileExcel,
+  getBatchJob,
   listBatches,
   listCertificates,
+  refreshSubmissionStatus,
+  sendSingleCertificate,
+  startBatchSend,
+  type BatchJobProgress,
   type CertificateListItem,
   type CertificateListQueryParams,
   type ImportBatchItem,
   type PublicConfig,
   type ReconcileCounts,
 } from '../api';
+import {
+  CertificateDetailDrawer,
+  type DrawerTabKey,
+} from '../components/CertificateDetailDrawer';
 import { IssueList, type IssueListItem } from '../components/IssueList';
 import {
   ReconcileSummary,
@@ -137,9 +148,7 @@ function buildCombinedDisplayIssues(
     }
   }
 
-  // Với giấy chưa đẩy hoặc bị lỗi dữ liệu Excel, hiển thị các lỗi/cảnh báo kiểm tra dữ liệu
   for (const issue of item.issues) {
-    // Ẩn các thông tin kỹ thuật phụ (LOCAL_SO_FORMAT, LOCAL_BHXH_REQUIRED_EMPTY) trên giấy đã đẩy thành công để bảng gọn rõ
     if (
       item.status === 'accepted' &&
       (issue.code === 'LOCAL_SO_FORMAT' ||
@@ -162,8 +171,10 @@ export interface ListPageProps {
 }
 
 /**
- * S15 — Trang Danh sách & Đối soát, Xuất XML (`.xml` / `.zip`) và Xuất Excel đối soát 29 cột.
- * Tuyệt đối không hiển thị 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`).
+ * S15 & S16 — Trang Danh sách & Đối soát, Xuất XML (`.xml` / `.zip`), Xuất Excel đối soát 29 cột,
+ * Đẩy cổng đơn/hàng loạt (kèm hộp thoại xác nhận, polling tiến độ `jobId` 1s, Gửi lại giữ nguyên `msg_id`, Tra trạng thái)
+ * và Ngăn trượt (`CertificateDetailDrawer`) Chi tiết chỉ đọc 25 trường + Xem trước XML + Lịch sử gửi.
+ * Tuyệt đối không hiển thị 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`) trên bảng danh sách.
  */
 export function ListPage({ config }: ListPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -172,8 +183,12 @@ export function ListPage({ config }: ListPageProps) {
   const fromDateId = useId();
   const toDateId = useId();
   const searchInputId = useId();
+  const batchConfirmTitleId = useId();
+  const prodConfirmCheckboxId = useId();
 
-  // Khởi tạo trạng thái lọc từ URL query params (ví dụ khi chuyển từ trang Import Excel sang `/?batchId=2`)
+  const batchConfirmDialogRef = useRef<HTMLDialogElement | null>(null);
+
+  // Khởi tạo trạng thái lọc từ URL query params
   const [activeTab, setActiveTab] = useState<ReconcileTab>(() =>
     parseValidTab(searchParams.get('tab')),
   );
@@ -214,6 +229,25 @@ export function ListPage({ config }: ListPageProps) {
   const [downloadingXmlId, setDownloadingXmlId] = useState<number | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+
+  // S16 — Trạng thái đẩy cổng đơn / hàng loạt / tra trạng thái
+  const [sendingSingleId, setSendingSingleId] = useState<number | null>(null);
+  const [refreshingRowId, setRefreshingRowId] = useState<number | null>(null);
+  const [startingBatch, setStartingBatch] = useState<boolean>(false);
+  const [activeJob, setActiveJob] = useState<BatchJobProgress | null>(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
+  const [pendingSendTargets, setPendingSendTargets] = useState<
+    Array<{ id: number; so: string; status: CertificateStatus }>
+  >([]);
+  const [prodConfirmed, setProdConfirmed] = useState<boolean>(false);
+
+  // S16 — Trạng thái Ngăn trượt (Drawer) Chi tiết chỉ đọc
+  const [drawerCertId, setDrawerCertId] = useState<number | null>(null);
+  const [drawerInitialTab, setDrawerInitialTab] =
+    useState<DrawerTabKey>('fields');
+  const [drawerRefreshCounter, setDrawerRefreshCounter] = useState<number>(0);
+
+  const isProduction = config?.appEnv === 'production';
 
   // Đồng bộ các bộ lọc lên URL searchParams
   const syncUrlParams = useCallback(
@@ -295,10 +329,70 @@ export function ListPage({ config }: ListPageProps) {
     pageSize,
   ]);
 
+  const fetchCertificatesData = useCallback(
+    async (options?: { silent?: boolean; preserveSelection?: boolean }) => {
+      const silent = options?.silent ?? false;
+      const preserveSelection = options?.preserveSelection ?? false;
+      if (!silent) {
+        setLoading(true);
+        setErrorMessage(null);
+      }
+      try {
+        const res = await listCertificates(currentQueryParams);
+        const safeItems = Array.isArray(res?.items) ? res.items : [];
+        setItems(safeItems);
+        setCounts(
+          res?.counts ? { ...EMPTY_COUNTS, ...res.counts } : EMPTY_COUNTS,
+        );
+        setTotal(typeof res?.total === 'number' ? res.total : safeItems.length);
+
+        if (!preserveSelection) {
+          const validIdsOnPage = new Set<number>();
+          for (const item of safeItems) {
+            if (item.status !== 'invalid') {
+              validIdsOnPage.add(item.id);
+            }
+          }
+          setSelectedIds(validIdsOnPage);
+        } else {
+          setSelectedIds((prev) => {
+            const validSet = new Set(
+              safeItems
+                .filter((item) => item.status !== 'invalid')
+                .map((item) => item.id),
+            );
+            const kept = new Set<number>();
+            for (const id of prev) {
+              if (validSet.has(id)) {
+                kept.add(id);
+              }
+            }
+            return kept.size > 0 ? kept : validSet;
+          });
+        }
+      } catch (err) {
+        if (!silent) {
+          if (err instanceof ApiError) {
+            setErrorMessage(err.message);
+          } else {
+            setErrorMessage(
+              'Không thể tải danh sách giấy khám sức khỏe đối soát.',
+            );
+          }
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [currentQueryParams],
+  );
+
   // Tải danh sách giấy & số đếm đối soát (`GET /api/certificates`)
   useEffect(() => {
     let cancelled = false;
-    async function loadCertificates() {
+    async function load() {
       setLoading(true);
       setErrorMessage(null);
       try {
@@ -308,10 +402,11 @@ export function ListPage({ config }: ListPageProps) {
         }
         const safeItems = Array.isArray(res?.items) ? res.items : [];
         setItems(safeItems);
-        setCounts(res?.counts ? { ...EMPTY_COUNTS, ...res.counts } : EMPTY_COUNTS);
+        setCounts(
+          res?.counts ? { ...EMPTY_COUNTS, ...res.counts } : EMPTY_COUNTS,
+        );
         setTotal(typeof res?.total === 'number' ? res.total : safeItems.length);
 
-        // Mặc định tick sẵn các dòng hợp lệ (status !== 'invalid') trên trang hiện tại để tiện tải ZIP
         const validIdsOnPage = new Set<number>();
         for (const item of safeItems) {
           if (item.status !== 'invalid') {
@@ -337,11 +432,68 @@ export function ListPage({ config }: ListPageProps) {
       }
     }
 
-    void loadCertificates();
+    void load();
     return () => {
       cancelled = true;
     };
   }, [currentQueryParams]);
+
+  // S16 — Polling tiến độ đẩy cổng hàng loạt theo `jobId` mỗi 1 giây (`1000ms`)
+  const activeJobId = activeJob?.jobId ?? null;
+  const activeJobStatus = activeJob?.status ?? null;
+
+  useEffect(() => {
+    if (!activeJobId || activeJobStatus !== 'running') {
+      return;
+    }
+
+    let cancelled = false;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    async function pollOnce() {
+      if (cancelled || !activeJobId) {
+        return;
+      }
+      try {
+        const latest = await getBatchJob(activeJobId);
+        if (cancelled) {
+          return;
+        }
+        setActiveJob(latest);
+
+        if (latest.status === 'completed') {
+          setActionNotice(
+            `Đã hoàn tất tiến trình đẩy cổng hàng loạt (${latest.done}/${latest.total} giấy): ${latest.accepted} thành công, ${latest.rejected} bị Sở từ chối, ${latest.error} lỗi mạng/cấu hình.`,
+          );
+          await fetchCertificatesData({
+            silent: true,
+            preserveSelection: true,
+          });
+          setDrawerRefreshCounter((c) => c + 1);
+          return;
+        }
+      } catch {
+        // Bỏ qua lỗi mạng tạm thời khi polling tiến độ, thử lại ở nhịp 1s kế tiếp
+      }
+
+      if (!cancelled) {
+        timerId = setTimeout(() => {
+          void pollOnce();
+        }, 1000);
+      }
+    }
+
+    timerId = setTimeout(() => {
+      void pollOnce();
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      if (timerId !== null) {
+        clearTimeout(timerId);
+      }
+    };
+  }, [activeJobId, activeJobStatus, fetchCertificatesData]);
 
   function handleSelectTab(nextTab: ReconcileTab) {
     const nextStatus = nextTab === 'attention' ? attentionStatus : undefined;
@@ -457,7 +609,7 @@ export function ListPage({ config }: ListPageProps) {
     });
   }
 
-  // Các giấy hợp lệ (status !== 'invalid') trên trang hiện tại
+  // Các giấy hợp lệ (status !== 'invalid') trên trang hiện tại (dùng cho Tải XML .zip)
   const validItemsOnPage = useMemo(
     () => items.filter((item) => item.status !== 'invalid'),
     [items],
@@ -470,6 +622,21 @@ export function ListPage({ config }: ListPageProps) {
         .map((item) => item.id),
     [validItemsOnPage, selectedIds],
   );
+
+  // Các giấy đang được chọn có thể Đẩy cổng / Gửi lại (`ready` hoặc `error`, hoặc nếu người dùng chỉ chọn dòng hợp lệ khác)
+  const selectedSendableItems = useMemo(() => {
+    const readyOrError = validItemsOnPage.filter(
+      (item) =>
+        selectedIds.has(item.id) &&
+        (item.status === 'ready' || item.status === 'error'),
+    );
+    if (readyOrError.length > 0) {
+      return readyOrError;
+    }
+    return validItemsOnPage.filter(
+      (item) => selectedIds.has(item.id) && item.status !== 'sending',
+    );
+  }, [validItemsOnPage, selectedIds]);
 
   const allValidOnPageSelected =
     validItemsOnPage.length > 0 &&
@@ -496,6 +663,221 @@ export function ListPage({ config }: ListPageProps) {
       }
       return next;
     });
+  }
+
+  function openBatchConfirmModal(
+    targets: Array<{ id: number; so: string; status: CertificateStatus }>,
+  ) {
+    if (targets.length === 0) {
+      return;
+    }
+    setPendingSendTargets(targets);
+    setProdConfirmed(false);
+    setConfirmDialogOpen(true);
+    const dialog = batchConfirmDialogRef.current;
+    if (dialog && typeof dialog.showModal === 'function' && !dialog.open) {
+      dialog.showModal();
+    }
+  }
+
+  function closeBatchConfirmModal() {
+    const dialog = batchConfirmDialogRef.current;
+    if (dialog && dialog.open && typeof dialog.close === 'function') {
+      dialog.close();
+    }
+    setConfirmDialogOpen(false);
+  }
+
+  async function handleConfirmBatchSend() {
+    if (pendingSendTargets.length === 0) {
+      return;
+    }
+    if (isProduction && !prodConfirmed) {
+      return;
+    }
+
+    setStartingBatch(true);
+    setErrorMessage(null);
+    setActionNotice(null);
+
+    try {
+      const ids = pendingSendTargets.map((t) => t.id);
+      const startRes = await startBatchSend(ids);
+
+      // Khởi tạo trạng thái tiến độ ngay lập tức và gọi GET /api/jobs/:jobId lần đầu
+      const initialProgress: BatchJobProgress = {
+        jobId: startRes.jobId,
+        status: startRes.status,
+        total: startRes.total,
+        done: 0,
+        accepted: 0,
+        rejected: 0,
+        error: 0,
+        invalid: 0,
+        pending: startRes.total,
+        pausedUntilMs: null,
+        rateLimitCount: 0,
+        createdAt: new Date().toISOString(),
+        finishedAt: null,
+        items: pendingSendTargets.map((t) => ({
+          certificateId: t.id,
+          so: t.so,
+          status: 'queued',
+          msgId: null,
+          serverSubmissionId: null,
+          serverCertificateId: null,
+          httpStatus: null,
+          resCode: null,
+          errors: [],
+          warnings: [],
+          lastError: null,
+          attempts: 0,
+          reusedPendingSubmission: false,
+          recoveredViaStatus: false,
+          startedAt: null,
+          finishedAt: null,
+        })),
+      };
+      setActiveJob(initialProgress);
+
+      try {
+        const immediateJob = await getBatchJob(startRes.jobId);
+        setActiveJob(immediateJob);
+        if (immediateJob.status === 'completed') {
+          setActionNotice(
+            `Đã hoàn tất tiến trình đẩy cổng hàng loạt (${immediateJob.done}/${immediateJob.total} giấy): ${immediateJob.accepted} thành công, ${immediateJob.rejected} bị Sở từ chối, ${immediateJob.error} lỗi mạng/cấu hình.`,
+          );
+          await fetchCertificatesData({
+            silent: true,
+            preserveSelection: true,
+          });
+          setDrawerRefreshCounter((c) => c + 1);
+        }
+      } catch {
+        // Polling 1s trong useEffect sẽ tiếp tục cập nhật
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage('Không thể khởi tạo tiến trình đẩy cổng hàng loạt.');
+      }
+    } finally {
+      setStartingBatch(false);
+    }
+  }
+
+  async function executeSingleSend(
+    certId: number,
+    so: string,
+    currentStatus: CertificateStatus,
+  ) {
+    setSendingSingleId(certId);
+    setErrorMessage(null);
+    setActionNotice(null);
+    try {
+      const res = await sendSingleCertificate(certId);
+      const msgIdText = res.submission?.msgId
+        ? ` (msg_id: ${res.submission.msgId}${
+            res.reusedPendingSubmission ? ' — giữ nguyên msg_id khi gửi lại' : ''
+          })`
+        : '';
+
+      if (res.status === 'accepted') {
+        setActionNotice(
+          `✅ Đã đẩy thành công giấy ${res.so} lên Hệ thống Sở Y tế${msgIdText}.`,
+        );
+      } else if (res.status === 'rejected') {
+        setActionNotice(
+          `⛔ Giấy ${res.so} bị Hệ thống Sở từ chối${msgIdText}. Vui lòng xem chi tiết lỗi và sửa trên file Excel.`,
+        );
+      } else if (res.status === 'error') {
+        setErrorMessage(
+          `⚠️ Lỗi mạng hoặc cấu hình khi gửi giấy ${res.so}${msgIdText}. Bạn có thể bấm "Gửi lại" để thử lại trên cùng msg_id.`,
+        );
+      } else {
+        setErrorMessage(
+          `⛔ Giấy ${so} đang có lỗi dữ liệu chặn (${currentStatus}), không thể đẩy cổng.`,
+        );
+      }
+
+      await fetchCertificatesData({ silent: true, preserveSelection: true });
+      setDrawerRefreshCounter((c) => c + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage(`Không thể gửi giấy khám sức khỏe ${so}.`);
+      }
+    } finally {
+      setSendingSingleId(null);
+    }
+  }
+
+  function handleRequestSingleSend(
+    certId: number,
+    so: string,
+    currentStatus: CertificateStatus,
+  ) {
+    if (currentStatus === 'invalid') {
+      return;
+    }
+    // Ở môi trường production bắt buộc bật hộp xác nhận đỏ trước mỗi lần gửi
+    if (isProduction) {
+      openBatchConfirmModal([{ id: certId, so, status: currentStatus }]);
+      return;
+    }
+    void executeSingleSend(certId, so, currentStatus);
+  }
+
+  async function handleRefreshRowStatus(item: CertificateListItem) {
+    if (!item.latestSubmission) {
+      return;
+    }
+    setRefreshingRowId(item.id);
+    setErrorMessage(null);
+    setActionNotice(null);
+    try {
+      const res = await refreshSubmissionStatus(item.latestSubmission.id);
+      if (res.found) {
+        setActionNotice(
+          `🔍 Đã tra trạng thái giấy ${item.so} (msg_id: ${res.submission.msgId}): Hệ thống Sở ghi nhận "${res.status ?? 'đã xử lý'}".`,
+        );
+      } else {
+        setActionNotice(
+          `🔍 Đã tra trạng thái giấy ${item.so} (msg_id: ${res.submission.msgId}): Hệ thống Sở chưa ghi nhận gói tin này (HTTP 404).`,
+        );
+      }
+      await fetchCertificatesData({ silent: true, preserveSelection: true });
+      setDrawerRefreshCounter((c) => c + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage(`Không thể tra trạng thái cho số giấy ${item.so}.`);
+      }
+    } finally {
+      setRefreshingRowId(null);
+    }
+  }
+
+  function handleOpenDrawer(certId: number, tab: DrawerTabKey = 'fields') {
+    setDrawerInitialTab(tab);
+    setDrawerCertId(certId);
+  }
+
+  function handleRowClick(
+    event: MouseEvent<HTMLTableRowElement>,
+    item: CertificateListItem,
+  ) {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      target.closest('button, input, label, a, select, textarea')
+    ) {
+      return;
+    }
+    handleOpenDrawer(item.id, 'fields');
   }
 
   async function handleExportReconcileExcel() {
@@ -572,7 +954,9 @@ export function ListPage({ config }: ListPageProps) {
     try {
       const result = await downloadCertificateXml(item.id);
       triggerBrowserFileDownload(result.blob, result.fileName);
-      setActionNotice(`Đã tải file XML "${result.fileName}" cho số giấy ${item.so}.`);
+      setActionNotice(
+        `Đã tải file XML "${result.fileName}" cho số giấy ${item.so}.`,
+      );
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMessage(err.message);
@@ -592,6 +976,139 @@ export function ListPage({ config }: ListPageProps) {
     appliedQuery.trim() !== '' ||
     attentionStatus !== undefined;
 
+  const progressPercent =
+    activeJob && activeJob.total > 0
+      ? Math.min(100, Math.round((activeJob.done / activeJob.total) * 100))
+      : 0;
+
+  function renderBatchProgressPanel() {
+    if (!activeJob) {
+      return null;
+    }
+    const isRunning = activeJob.status === 'running';
+
+    return (
+      <div
+        className={`batch-progress-panel ${
+          isRunning ? 'batch-progress-running' : 'batch-progress-completed'
+        }`}
+        role="region"
+        aria-label="Tiến độ đẩy cổng hàng loạt"
+        data-testid="batch-progress-panel"
+      >
+        <div className="batch-progress-header">
+          <div className="batch-progress-title-group">
+            <strong className="batch-progress-title">
+              {isRunning
+                ? '⏳ Đang đẩy cổng hàng loạt lên Hệ thống Sở Y tế...'
+                : '✅ Tiến trình đẩy cổng hàng loạt đã hoàn tất'}
+            </strong>
+            <span className="batch-progress-jobid">
+              Mã tiến trình: <code data-testid="batch-progress-jobid">{activeJob.jobId}</code>
+            </span>
+          </div>
+
+          <div className="batch-progress-pct-group">
+            <span
+              className="batch-progress-pct"
+              data-testid="batch-progress-percent"
+            >
+              {progressPercent}% ({activeJob.done}/{activeJob.total} giấy)
+            </span>
+            {!isRunning && !confirmDialogOpen && (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                data-testid="dismiss-batch-progress-btn"
+                onClick={() => {
+                  setActiveJob(null);
+                }}
+              >
+                ✕ Ẩn thanh tiến độ
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="batch-progress-bar-track" aria-hidden="true">
+          <div
+            className="batch-progress-bar-fill"
+            style={{ width: `${progressPercent}%` }}
+            data-testid="batch-progress-bar-fill"
+          />
+        </div>
+        <progress
+          className="visually-hidden"
+          max={activeJob.total || 1}
+          value={activeJob.done}
+          data-testid="batch-progress-native"
+        >
+          {progressPercent}%
+        </progress>
+
+        <div className="batch-progress-stats" data-testid="batch-progress-stats">
+          <div className="batch-stat-chip stat-done">
+            <span>Đã xử lý:</span>
+            <strong data-testid="batch-progress-done">
+              {activeJob.done} / {activeJob.total}
+            </strong>
+          </div>
+          <div className="batch-stat-chip stat-accepted">
+            <span>✅ Thành công:</span>
+            <strong data-testid="batch-progress-accepted">
+              {activeJob.accepted}
+            </strong>
+          </div>
+          <div className="batch-stat-chip stat-rejected">
+            <span>⛔ Sở từ chối:</span>
+            <strong data-testid="batch-progress-rejected">
+              {activeJob.rejected}
+            </strong>
+          </div>
+          <div className="batch-stat-chip stat-error">
+            <span>⚠️ Lỗi mạng / Cấu hình:</span>
+            <strong data-testid="batch-progress-error">
+              {activeJob.error}
+            </strong>
+          </div>
+        </div>
+
+        {activeJob.items && activeJob.items.length > 0 && (
+          <div
+            className="batch-progress-items-strip"
+            data-testid="batch-progress-items"
+          >
+            {activeJob.items.slice(0, 12).map((jobItem) => (
+              <span
+                key={jobItem.certificateId}
+                className={`batch-item-pill batch-item-${jobItem.status}`}
+                data-testid={`batch-item-pill-${jobItem.certificateId}`}
+              >
+                <code>{jobItem.so ?? `#${jobItem.certificateId}`}</code>:{' '}
+                {jobItem.status === 'accepted'
+                  ? '✅ accepted'
+                  : jobItem.status === 'rejected'
+                    ? '⛔ rejected'
+                    : jobItem.status === 'error'
+                      ? '⚠️ error'
+                      : jobItem.status === 'sending'
+                        ? '⏳ đang gửi'
+                        : '🕒 chờ gửi'}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const readyTargetCount = pendingSendTargets.filter(
+    (t) => t.status === 'ready',
+  ).length;
+  const retryTargetCount = pendingSendTargets.filter(
+    (t) => t.status === 'error',
+  ).length;
+
   return (
     <section className="workspace-panel list-page">
       <div className="panel-heading-row">
@@ -601,7 +1118,8 @@ export function ListPage({ config }: ListPageProps) {
           </h1>
           <p className="panel-subtitle">
             Theo dõi 100% quân số đã nạp từ Excel theo 4 nhóm trạng thái đối soát,
-            xuất file XML lẻ / gói ZIP và xuất file Excel đối soát 29 cột.
+            xem chi tiết 25 trường / XML, đẩy cổng hàng loạt và xuất file Excel đối
+            soát 29 cột.
             {config && (
               <span>
                 {' '}
@@ -611,8 +1129,32 @@ export function ListPage({ config }: ListPageProps) {
           </p>
         </div>
 
-        {/* Các nút công cụ Xuất dữ liệu & Đối soát */}
+        {/* Các nút công cụ Xuất dữ liệu, Đẩy cổng hàng loạt & Đối soát */}
         <div className="heading-actions" data-testid="export-toolbar">
+          <button
+            type="button"
+            className="btn-primary"
+            data-testid="batch-send-btn"
+            disabled={
+              selectedSendableItems.length === 0 ||
+              startingBatch ||
+              activeJob?.status === 'running'
+            }
+            onClick={() => {
+              openBatchConfirmModal(
+                selectedSendableItems.map((item) => ({
+                  id: item.id,
+                  so: item.so,
+                  status: item.status,
+                })),
+              );
+            }}
+          >
+            {activeJob?.status === 'running'
+              ? `⏳ Đang đẩy cổng (${activeJob.done}/${activeJob.total})...`
+              : `🚀 Đẩy cổng các giấy đã chọn (${selectedSendableItems.length})`}
+          </button>
+
           <button
             type="button"
             className="btn-secondary"
@@ -641,7 +1183,7 @@ export function ListPage({ config }: ListPageProps) {
               : `📦 Tải XML (.zip) (${selectedValidIds.length})`}
           </button>
 
-          <Link to="/import" className="btn-primary">
+          <Link to="/import" className="btn-secondary">
             📥 Import Excel
           </Link>
         </div>
@@ -744,7 +1286,10 @@ export function ListPage({ config }: ListPageProps) {
         </div>
       </form>
 
-      {/* Thông báo kết quả tải file / lỗi */}
+      {/* Thanh tiến độ đẩy cổng hàng loạt trên trang chính khi hộp thoại xác nhận đã đóng */}
+      {!confirmDialogOpen && renderBatchProgressPanel()}
+
+      {/* Thông báo kết quả tải file / đẩy cổng / lỗi */}
       {actionNotice && (
         <div
           className="alert-banner alert-info"
@@ -772,7 +1317,11 @@ export function ListPage({ config }: ListPageProps) {
         data-testid="reconcile-tabpanel"
       >
         {loading ? (
-          <div className="empty-preview-box" role="status" data-testid="list-loading">
+          <div
+            className="empty-preview-box"
+            role="status"
+            data-testid="list-loading"
+          >
             Đang tải danh sách đối soát...
           </div>
         ) : items.length === 0 ? (
@@ -789,9 +1338,13 @@ export function ListPage({ config }: ListPageProps) {
               className="table-wrapper"
               data-testid="reconcile-table-region"
             >
-              <table className="preview-table reconcile-table" data-testid="reconcile-table">
+              <table
+                className="preview-table reconcile-table"
+                data-testid="reconcile-table"
+              >
                 <caption id={tableCaptionId} className="visually-hidden">
-                  Bảng danh sách đối soát GKSK Lái xe ({items.length} trên tổng số {total} giấy)
+                  Bảng danh sách đối soát GKSK Lái xe ({items.length} trên tổng
+                  số {total} giấy)
                 </caption>
                 <thead>
                   <tr>
@@ -839,14 +1392,20 @@ export function ListPage({ config }: ListPageProps) {
                     const isChecked = !isInvalid && selectedIds.has(item.id);
                     const combinedIssues = buildCombinedDisplayIssues(item);
                     const checkboxId = `select-cert-${item.id}`;
+                    const isDrawerActive = drawerCertId === item.id;
+                    const isSendingRow =
+                      sendingSingleId === item.id || item.status === 'sending';
 
                     return (
                       <tr
                         key={item.id}
                         data-testid={`cert-row-${item.id}`}
-                        className={`preview-row ${
+                        onClick={(event) => {
+                          handleRowClick(event, item);
+                        }}
+                        className={`preview-row reconcile-clickable-row ${
                           isInvalid ? 'preview-row-invalid' : ''
-                        }`}
+                        } ${isDrawerActive ? 'preview-row-active-drawer' : ''}`}
                       >
                         <th scope="row" className="col-select">
                           <label
@@ -872,9 +1431,22 @@ export function ListPage({ config }: ListPageProps) {
 
                         <td className="col-so">
                           <div className="cert-so-cell">
-                            <code className="so-code" data-testid={`cert-so-${item.id}`}>
-                              {item.so}
-                            </code>
+                            <button
+                              type="button"
+                              className="so-link-btn"
+                              onClick={() => {
+                                handleOpenDrawer(item.id, 'fields');
+                              }}
+                              title="Bấm để mở Ngăn trượt xem chi tiết 25 trường, XML và lịch sử đẩy cổng"
+                              data-testid={`cert-so-btn-${item.id}`}
+                            >
+                              <code
+                                className="so-code"
+                                data-testid={`cert-so-${item.id}`}
+                              >
+                                {item.so}
+                              </code>
+                            </button>
                             {item.batchFilename && (
                               <span
                                 className="cert-batch-meta"
@@ -933,13 +1505,20 @@ export function ListPage({ config }: ListPageProps) {
                               <span
                                 className="cert-msgid-meta"
                                 title={`msg_id: ${item.latestSubmission.msgId}`}
+                                data-testid={`cert-latest-msgid-${item.id}`}
                               >
-                                msg_id: <code>{item.latestSubmission.msgId.slice(0, 15)}…</code>
+                                msg_id:{' '}
+                                <code>
+                                  {item.latestSubmission.msgId.slice(0, 15)}…
+                                </code>
                               </span>
                             )}
                             {item.serverCertificateId && (
                               <span className="cert-msgid-meta">
-                                ID Sở: <code>{item.serverCertificateId.slice(0, 12)}…</code>
+                                ID Sở:{' '}
+                                <code>
+                                  {item.serverCertificateId.slice(0, 12)}…
+                                </code>
                               </span>
                             )}
                           </div>
@@ -955,6 +1534,17 @@ export function ListPage({ config }: ListPageProps) {
 
                         <td className="col-actions">
                           <div className="row-actions-group">
+                            <button
+                              type="button"
+                              className="btn-ghost btn-sm"
+                              onClick={() => {
+                                handleOpenDrawer(item.id, 'fields');
+                              }}
+                              data-testid={`view-detail-btn-${item.id}`}
+                            >
+                              Chi tiết
+                            </button>
+
                             <button
                               type="button"
                               className="btn-secondary btn-sm"
@@ -978,19 +1568,51 @@ export function ListPage({ config }: ListPageProps) {
 
                             <button
                               type="button"
-                              className="btn-primary btn-sm"
-                              disabled={
-                                isInvalid || item.status === 'sending'
-                              }
+                              className={`btn-sm ${
+                                item.status === 'error'
+                                  ? 'btn-retry-warning'
+                                  : 'btn-primary'
+                              }`}
+                              disabled={isInvalid || isSendingRow}
+                              onClick={() => {
+                                handleRequestSingleSend(
+                                  item.id,
+                                  item.so,
+                                  item.status,
+                                );
+                              }}
                               title={
                                 isInvalid
                                   ? 'Giấy đang có lỗi dữ liệu Excel, không thể đẩy cổng'
-                                  : 'Đẩy cổng Sở Y tế'
+                                  : item.status === 'error'
+                                    ? 'Gửi lại gói tin lỗi mạng (giữ nguyên msg_id)'
+                                    : 'Đẩy cổng Sở Y tế'
                               }
                               data-testid={`send-cert-btn-${item.id}`}
                             >
-                              Đẩy cổng
+                              {isSendingRow
+                                ? 'Đang gửi...'
+                                : item.status === 'error'
+                                  ? '🔄 Gửi lại'
+                                  : 'Đẩy cổng'}
                             </button>
+
+                            {item.latestSubmission && (
+                              <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                disabled={refreshingRowId === item.id}
+                                onClick={() => {
+                                  void handleRefreshRowStatus(item);
+                                }}
+                                title={`Tra lại trạng thái trên Hệ thống Sở theo msg_id=${item.latestSubmission.msgId}`}
+                                data-testid={`refresh-status-btn-${item.id}`}
+                              >
+                                {refreshingRowId === item.id
+                                  ? 'Đang tra...'
+                                  : 'Tra trạng thái'}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1004,8 +1626,8 @@ export function ListPage({ config }: ListPageProps) {
             <div className="pagination-bar" data-testid="pagination-bar">
               <div className="pagination-summary">
                 Hiển thị <strong>{items.length}</strong> / tổng số{' '}
-                <strong data-testid="pagination-total">{total}</strong> giấy · Trang{' '}
-                <strong>{page}</strong> / <strong>{totalPages}</strong>
+                <strong data-testid="pagination-total">{total}</strong> giấy ·
+                Trang <strong>{page}</strong> / <strong>{totalPages}</strong>
               </div>
               <div className="pagination-actions">
                 <button
@@ -1055,6 +1677,161 @@ export function ListPage({ config }: ListPageProps) {
           </>
         )}
       </div>
+
+      {/* Hộp thoại native <dialog> xác nhận đẩy cổng hàng loạt & hiển thị thanh tiến độ trực tiếp (dialog guide) */}
+      <dialog
+        ref={batchConfirmDialogRef}
+        className="confirm-dialog batch-send-dialog"
+        aria-labelledby={batchConfirmTitleId}
+        data-testid="batch-send-confirm-dialog"
+        onClose={() => {
+          if (batchConfirmDialogRef.current) {
+            batchConfirmDialogRef.current.returnValue = '';
+          }
+          setConfirmDialogOpen(false);
+        }}
+      >
+        <div className="confirm-dialog-inner">
+          <h1 id={batchConfirmTitleId} className="confirm-dialog-title">
+            🚀 Xác nhận đẩy cổng GKSK Lái xe lên Hệ thống Sở Y tế
+          </h1>
+
+          <div className="confirm-dialog-body">
+            <p>
+              Bạn đã chọn{' '}
+              <strong data-testid="batch-confirm-count">
+                {pendingSendTargets.length}
+              </strong>{' '}
+              giấy khám sức khỏe để đẩy tuần tự lên Hệ thống CSDL Sức khỏe Sở Y tế
+              Đồng Nai
+              {config
+                ? ` (CSYT ${config.facilityId} — ${config.facilityName})`
+                : ''}
+              :
+            </p>
+
+            <div className="batch-confirm-summary-badges">
+              <span className="status-pill cert-badge-ready">
+                🟦 Chờ đẩy mới: {readyTargetCount} giấy
+              </span>
+              {retryTargetCount > 0 && (
+                <span className="status-pill cert-badge-error">
+                  🔄 Gửi lại lỗi mạng (giữ nguyên msg_id): {retryTargetCount}{' '}
+                  giấy
+                </span>
+              )}
+            </div>
+
+            {pendingSendTargets.length > 0 && (
+              <div
+                className="batch-confirm-so-list"
+                data-testid="batch-confirm-so-list"
+              >
+                {pendingSendTargets.slice(0, 10).map((t) => (
+                  <code key={t.id} className="so-code">
+                    {t.so}
+                  </code>
+                ))}
+                {pendingSendTargets.length > 10 && (
+                  <span className="cert-sub-meta">
+                    +{pendingSendTargets.length - 10} giấy khác
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Cảnh báo đỏ bắt buộc xác nhận khi APP_ENV=production */}
+            {isProduction && (
+              <div
+                className="prod-confirm-warning-box"
+                role="alert"
+                data-testid="prod-send-warning"
+              >
+                <strong>
+                  🚨 CẢNH BÁO MÔI TRƯỜNG VẬN HÀNH THẬT (APP_ENV=production):
+                </strong>
+                <p>
+                  Hệ thống đang kết nối tới máy chủ thật{' '}
+                  <code>{config?.baseUrlHost}</code>. Tuyệt đối{' '}
+                  <strong>KHÔNG</strong> đẩy các giấy thử nghiệm (<code>TEST.</code>
+                  , <code>TESTGKSK01</code>) vì số CCCD 12 số hoặc CMND 9 số sẽ tạo
+                  hồ sơ người thật trên Hệ thống Sở Y tế.
+                </p>
+                <label
+                  htmlFor={prodConfirmCheckboxId}
+                  className="checkbox-label prod-confirm-checkbox-label"
+                >
+                  <input
+                    id={prodConfirmCheckboxId}
+                    type="checkbox"
+                    className="brand-checkbox"
+                    checked={prodConfirmed}
+                    onChange={(e) => {
+                      setProdConfirmed(e.target.checked);
+                    }}
+                    data-testid="prod-confirm-checkbox"
+                  />
+                  <span>
+                    Tôi xác nhận các giấy đã chọn là dữ liệu khám thật và đồng ý
+                    đẩy lên Cổng Sở Y tế.
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {/* Hiển thị trực tiếp thanh tiến độ ngay trong hộp thoại khi đang chạy hoặc vừa chạy xong */}
+            {confirmDialogOpen && renderBatchProgressPanel()}
+          </div>
+
+          <div className="confirm-dialog-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              autoFocus
+              data-testid="cancel-batch-send-btn"
+              onClick={closeBatchConfirmModal}
+            >
+              {activeJob ? 'Đóng hộp thoại (Xem trên bảng)' : 'Hủy bỏ'}
+            </button>
+
+            <button
+              type="button"
+              className={isProduction ? 'btn-danger' : 'btn-primary'}
+              disabled={
+                startingBatch ||
+                activeJob?.status === 'running' ||
+                (isProduction && !prodConfirmed)
+              }
+              data-testid="confirm-batch-send-btn"
+              onClick={() => {
+                void handleConfirmBatchSend();
+              }}
+            >
+              {startingBatch
+                ? 'Đang khởi tạo...'
+                : activeJob?.status === 'running'
+                  ? `⏳ Đang đẩy cổng (${activeJob.done}/${activeJob.total})...`
+                  : `🚀 Xác nhận đẩy cổng (${pendingSendTargets.length} giấy)`}
+            </button>
+          </div>
+        </div>
+      </dialog>
+
+      {/* S16 — Ngăn trượt (Drawer) Chi tiết chỉ đọc mở bên phải bảng đối soát */}
+      <CertificateDetailDrawer
+        certificateId={drawerCertId}
+        initialTab={drawerInitialTab}
+        refreshCounter={drawerRefreshCounter}
+        onClose={() => {
+          setDrawerCertId(null);
+        }}
+        onRequestSend={(id, so, status) => {
+          handleRequestSingleSend(id, so, status);
+        }}
+        onCertificateUpdated={() => {
+          void fetchCertificatesData({ silent: true, preserveSelection: true });
+        }}
+      />
     </section>
   );
 }
