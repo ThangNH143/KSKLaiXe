@@ -1,3 +1,4 @@
+import type { Express } from 'express';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -7,9 +8,14 @@ import {
   SENSITIVE_TAGS,
   type GkskRecord,
 } from '@gksk/shared';
-import { createApp } from '../app.js';
+import {
+  createApp,
+  DEFAULT_TEST_LOGIN_PASSWORD,
+  DEFAULT_TEST_LOGIN_USER,
+} from '../app.js';
 import { createInMemoryRepositories } from '../db/inMemoryRepo.js';
 import { buildGkskXml } from '../gksk/xml.js';
+import { CSRF_HEADER_VALUE } from '../middleware/requireAuth.js';
 import {
   buildReconcileExcel,
   buildXmlFileName,
@@ -21,6 +27,19 @@ import {
   sanitizeXmlFileName,
 } from '../services/exportService.js';
 import { computeCertificatePayload } from '../services/sendService.js';
+
+async function createAuthenticatedAgent(app: Express) {
+  const agent = request.agent(app);
+  const loginRes = await agent
+    .post('/api/auth/login')
+    .set('X-Requested-With', CSRF_HEADER_VALUE)
+    .send({
+      username: DEFAULT_TEST_LOGIN_USER,
+      password: DEFAULT_TEST_LOGIN_PASSWORD,
+    });
+  expect(loginRes.status).toBe(200);
+  return agent;
+}
 
 function makeSampleRecord(overrides: Partial<GkskRecord> = {}): GkskRecord {
   const base = createEmptyRecord();
@@ -275,14 +294,16 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
       now: '2026-11-23T05:02:00.000Z',
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // Kiểm tra GET /api/batches
-    const batchesRes = await request(app).get('/api/batches');
+    const batchesRes = await agent.get('/api/batches');
     expect(batchesRes.status).toBe(200);
     expect(batchesRes.body.items).toHaveLength(2);
     expect(batchesRes.body.items[0].filename).toBe('ksk_chieu_23_11.xlsx');
 
     // Kiểm tra GET /api/certificates (tất cả)
-    const allRes = await request(app).get('/api/certificates');
+    const allRes = await agent.get('/api/certificates');
     expect(allRes.status).toBe(200);
     expect(allRes.body.total).toBe(5);
     expect(allRes.body.counts).toEqual({
@@ -311,28 +332,28 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     expect(rawJsonText).not.toContain('Secret Tinh Trang Benh');
 
     // Lọc theo tab=unsent | accepted | attention
-    const unsentRes = await request(app)
+    const unsentRes = await agent
       .get('/api/certificates')
       .query({ tab: 'unsent' });
     expect(unsentRes.status).toBe(200);
     expect(unsentRes.body.items).toHaveLength(1);
     expect(unsentRes.body.items[0].so).toBe('TEST.75001.READY');
 
-    const acceptedRes = await request(app)
+    const acceptedRes = await agent
       .get('/api/certificates')
       .query({ tab: 'accepted' });
     expect(acceptedRes.status).toBe(200);
     expect(acceptedRes.body.items).toHaveLength(1);
     expect(acceptedRes.body.items[0].so).toBe('TEST.75001.ACCEPTED');
 
-    const attentionRes = await request(app)
+    const attentionRes = await agent
       .get('/api/certificates')
       .query({ tab: 'attention' });
     expect(attentionRes.status).toBe(200);
     expect(attentionRes.body.items).toHaveLength(3);
 
     // Lọc theo batchId
-    const batch1Res = await request(app)
+    const batch1Res = await agent
       .get('/api/certificates')
       .query({ batchId: batch1.id });
     expect(batch1Res.status).toBe(200);
@@ -340,7 +361,7 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     expect(batch1Res.body.counts.all).toBe(3);
 
     // Lọc theo từ khóa q
-    const qRes = await request(app)
+    const qRes = await agent
       .get('/api/certificates')
       .query({ q: 'REJECTED' });
     expect(qRes.status).toBe(200);
@@ -386,8 +407,10 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
       status: 'invalid',
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // Chi tiết giấy hợp lệ: đủ 25 trường (có cả 4 trường nhạy cảm) + chuỗi XML
-    const detailValid = await request(app).get(
+    const detailValid = await agent.get(
       `/api/certificates/${upValid.row.id}`,
     );
     expect(detailValid.status).toBe(200);
@@ -397,7 +420,7 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     expect(detailValid.body.xml).toBe(buildGkskXml(recValid));
 
     // Chi tiết giấy invalid: xml = null, issues có lỗi chặn GKSK_NGAYSINH_INVALID
-    const detailInvalid = await request(app).get(
+    const detailInvalid = await agent.get(
       `/api/certificates/${upInvalid.row.id}`,
     );
     expect(detailInvalid.status).toBe(200);
@@ -409,7 +432,7 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     ).toBe(true);
 
     // Tải XML lẻ cho TEST.75001.1
-    const xmlRes = await request(app).get(
+    const xmlRes = await agent.get(
       `/api/certificates/${upValid.row.id}/xml`,
     );
     expect(xmlRes.status).toBe(200);
@@ -419,7 +442,7 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     expect(xmlRes.text).toBe(buildGkskXml(recValid));
 
     // Tải XML lẻ cho SO chứa ../ -> tên file không chứa ../
-    const xmlTraversalRes = await request(app).get(
+    const xmlTraversalRes = await agent.get(
       `/api/certificates/${upTraversal.row.id}/xml`,
     );
     expect(xmlTraversalRes.status).toBe(200);
@@ -429,7 +452,7 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     expect(xmlTraversalRes.headers['content-disposition']).not.toContain('..');
 
     // Tải XML lẻ cho giấy invalid -> trả HTTP 422
-    const xmlInvalidRes = await request(app).get(
+    const xmlInvalidRes = await agent.get(
       `/api/certificates/${upInvalid.row.id}/xml`,
     );
     expect(xmlInvalidRes.status).toBe(422);
@@ -489,9 +512,12 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
       excelRowNumber: 4,
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // Gọi POST /api/certificates/xml-zip với cả 3 ID (2 hợp lệ + 1 invalid)
-    const zipRes = await request(app)
+    const zipRes = await agent
       .post('/api/certificates/xml-zip')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({ ids: [up1.row.id, up2.row.id, upBad.row.id] })
       .buffer(true)
       .parse((res, callback) => {
@@ -514,8 +540,9 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     expect(extracted[1]?.content.toString('utf8')).toBe(buildGkskXml(rec2));
 
     // Nếu chỉ chọn toàn giấy invalid -> trả HTTP 422
-    const zipOnlyInvalidRes = await request(app)
+    const zipOnlyInvalidRes = await agent
       .post('/api/certificates/xml-zip')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({ ids: [upBad.row.id] });
     expect(zipOnlyInvalidRes.status).toBe(422);
     expect(zipOnlyInvalidRes.body.error.code).toBe(
@@ -523,7 +550,7 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     );
 
     // Gọi GET /api/certificates/export-excel
-    const excelRes = await request(app)
+    const excelRes = await agent
       .get('/api/certificates/export-excel')
       .buffer(true)
       .parse((res, callback) => {
@@ -578,7 +605,9 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
       warnings: [{ code: 'GKSK_UNSIGNED', field: null }],
     });
 
-    const subRes = await request(app).get(
+    const agent = await createAuthenticatedAgent(app);
+
+    const subRes = await agent.get(
       `/api/certificates/${up.row.id}/submissions`,
     );
     expect(subRes.status).toBe(200);
@@ -588,24 +617,28 @@ describe('S10 — exportService & API Danh sách đối soát, Chi tiết chỉ 
     );
 
     // Xóa cục bộ giấy khỏi DB
-    const delRes = await request(app).delete(`/api/certificates/${up.row.id}`);
+    const delRes = await agent
+      .delete(`/api/certificates/${up.row.id}`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(delRes.status).toBe(200);
     expect(delRes.body).toEqual({ ok: true, id: up.row.id });
 
-    const afterDelRes = await request(app).get(
+    const afterDelRes = await agent.get(
       `/api/certificates/${up.row.id}`,
     );
     expect(afterDelRes.status).toBe(404);
     expect(afterDelRes.body.error.code).toBe('CERTIFICATE_NOT_FOUND');
 
     // Khẳng định không tồn tại endpoint tạo/sửa tay POST /api/certificates hay PUT /api/certificates/:id
-    const postManualRes = await request(app)
+    const postManualRes = await agent
       .post('/api/certificates')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({ so: 'TEST.MANUAL' });
     expect(postManualRes.status).toBe(404);
 
-    const putManualRes = await request(app)
+    const putManualRes = await agent
       .put(`/api/certificates/${up.row.id}`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({ so: 'TEST.MANUAL' });
     expect(putManualRes.status).toBe(404);
   });

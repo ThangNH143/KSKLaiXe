@@ -11,13 +11,15 @@ function start(): void {
     if (err instanceof ConfigError) {
       process.stderr.write(`${err.message}\n`);
     } else {
-      process.stderr.write(`Lỗi khởi động cấu hình: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(
+        `Lỗi khởi động cấu hình: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
     }
     process.exit(1);
   }
 
   const logger = createLogger({ level: config.logLevel });
-  const app = createApp();
+  const app = createApp({ config, logger });
 
   app.listen(config.port, '127.0.0.1', () => {
     logger.info(

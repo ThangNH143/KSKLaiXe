@@ -1,4 +1,5 @@
 import { Writable } from 'node:stream';
+import type { Express } from 'express';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -14,9 +15,14 @@ import {
   makeDefaultFixtureRow,
   TEMPLATE_TAGS,
 } from '../../../tests/fixtures/make-fixtures.js';
-import { createApp } from '../app.js';
+import {
+  createApp,
+  DEFAULT_TEST_LOGIN_PASSWORD,
+  DEFAULT_TEST_LOGIN_USER,
+} from '../app.js';
 import { createInMemoryRepositories } from '../db/inMemoryRepo.js';
 import { createLogger } from '../logger.js';
+import { CSRF_HEADER_VALUE } from '../middleware/requireAuth.js';
 import {
   buildReconcileExcel,
   RECONCILE_EXTRA_COLUMNS,
@@ -26,6 +32,19 @@ import {
   TEMPLATE_FORMATTED_ROWS,
 } from '../services/importService.js';
 import { computeCertificatePayload } from '../services/sendService.js';
+
+async function createAuthenticatedAgent(app: Express) {
+  const agent = request.agent(app);
+  const loginRes = await agent
+    .post('/api/auth/login')
+    .set('X-Requested-With', CSRF_HEADER_VALUE)
+    .send({
+      username: DEFAULT_TEST_LOGIN_USER,
+      password: DEFAULT_TEST_LOGIN_PASSWORD,
+    });
+  expect(loginRes.status).toBe(200);
+  return agent;
+}
 
 function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(
@@ -50,7 +69,9 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
       today: '2026-11-23',
     });
 
-    const res = await request(app)
+    const agent = await createAuthenticatedAgent(app);
+
+    const res = await agent
       .get('/api/import/template')
       .buffer(true)
       .parse((response, callback) => {
@@ -124,10 +145,13 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
       today: '2026-11-23',
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // 2a. ok_5rows.xlsx -> 5 dòng ready, conflictMode='new', defaultSelected=true
     const okBuf = fixtures.get('ok_5rows.xlsx')!;
-    const okPreviewRes = await request(app)
+    const okPreviewRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach('file', okBuf, 'ok_5rows.xlsx');
 
     expect(okPreviewRes.status).toBe(200);
@@ -147,8 +171,9 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
 
     // 2b. mixed_valid_invalid.xlsx -> 3 dòng ready + 2 dòng invalid (có SO) đều defaultSelected=true; 1 dòng trống SO có canCommit=false
     const mixedBuf = fixtures.get('mixed_valid_invalid.xlsx')!;
-    const mixedPreviewRes = await request(app)
+    const mixedPreviewRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach('file', mixedBuf, 'mixed_valid_invalid.xlsx');
 
     expect(mixedPreviewRes.status).toBe(200);
@@ -177,8 +202,9 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
     expect(row6MissingSo.defaultSelected).toBe(false);
 
     // Commit đợt mixed_valid_invalid.xlsx -> lưu đủ 5 dòng có SO (3 ready + 2 invalid) vào DB
-    const commitRes = await request(app)
+    const commitRes = await agent
       .post('/api/import/commit')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({
         filename: 'mixed_valid_invalid.xlsx',
         rows: mixedPreviewRes.body.rows.map(
@@ -269,9 +295,12 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
       'accepted',
     );
 
+    const agent = await createAuthenticatedAgent(app);
+
     const reimportBuf = fixtures.get('reimport_overwrite.xlsx')!;
-    const previewRes = await request(app)
+    const previewRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach('file', reimportBuf, 'reimport_overwrite.xlsx');
 
     expect(previewRes.status).toBe(200);
@@ -320,8 +349,9 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
     ).toBe(true);
 
     // Commit lần 1 theo mặc định (chỉ r1 & r2 được chọn) -> cập nhật r1, r2 sang ready; r3, r4 giữ nguyên accepted
-    const commitDefaultRes = await request(app)
+    const commitDefaultRes = await agent
       .post('/api/import/commit')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({
         filename: 'reimport_overwrite.xlsx',
         rows: previewRes.body.rows.map(
@@ -357,8 +387,9 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
     );
 
     // Nếu người dùng chủ động tick chọn dòng 4 (accepted_modified) và commit -> cập nhật dữ liệu mới và chuyển về ready
-    const commitModifiedRes = await request(app)
+    const commitModifiedRes = await agent
       .post('/api/import/commit')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .send({
         filename: 'reimport_overwrite_manual.xlsx',
         rows: [
@@ -659,9 +690,12 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
       today: '2026-11-23',
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // Thiếu cột KETLUAN -> 400 EXCEL_MISSING_REQUIRED_COLUMNS, nêu rõ KETLUAN
-    const missingColRes = await request(app)
+    const missingColRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach(
         'file',
         fixtures.get('missing_required_col.xlsx')!,
@@ -674,8 +708,9 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
     expect(missingColRes.body.error.message).toContain('KETLUAN');
 
     // 1001 dòng -> 400 EXCEL_TOO_MANY_ROWS
-    const tooManyRes = await request(app)
+    const tooManyRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach(
         'file',
         fixtures.get('too_many_rows.xlsx')!,
@@ -685,23 +720,26 @@ describe('S11 — Excel: mẫu GKSK_mau_nhap_lieu.xlsx và import ghi đè thôn
     expect(tooManyRes.body.error.code).toBe('EXCEL_TOO_MANY_ROWS');
 
     // File giả đổi đuôi .xlsx (sai magic bytes PK) -> 415 INVALID_EXCEL_FORMAT
-    const notXlsxRes = await request(app)
+    const notXlsxRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach('file', fixtures.get('not_xlsx.xlsx')!, 'not_xlsx.xlsx');
     expect(notXlsxRes.status).toBe(415);
     expect(notXlsxRes.body.error.code).toBe('INVALID_EXCEL_FORMAT');
 
     // File đuôi .csv -> 415 INVALID_FILE_EXTENSION
-    const csvExtRes = await request(app)
+    const csvExtRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach('file', fixtures.get('not_xlsx.xlsx')!, 'data.csv');
     expect(csvExtRes.status).toBe(415);
     expect(csvExtRes.body.error.code).toBe('INVALID_FILE_EXTENSION');
 
     // File > 5 MB -> 413 EXCEL_FILE_TOO_LARGE
     const over5MbBuf = Buffer.alloc(5 * 1024 * 1024 + 128, 0x50);
-    const over5MbRes = await request(app)
+    const over5MbRes = await agent
       .post('/api/import/excel')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
       .attach('file', over5MbBuf, 'huge.xlsx');
     expect(over5MbRes.status).toBe(413);
     expect(over5MbRes.body.error.code).toBe('EXCEL_FILE_TOO_LARGE');

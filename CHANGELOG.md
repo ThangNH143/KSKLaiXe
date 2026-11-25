@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S11 — Excel: mẫu và import ghi đè thông minh**
-- Bước kế tiếp: **S12 — Xác thực ứng dụng (server)**
+- Bước đã xong: **S12 — Xác thực ứng dụng (server)**
+- Bước kế tiếp: **S13 — Client: khung, đăng nhập, API layer**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,55 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S12] Xác thực ứng dụng (server) — 2026-11-25 — Antigravity
+### Đã làm
+- Cài đặt `bcryptjs` (v3.0.3, ESM + TypeScript types tích hợp) và `helmet` (v8.3.0) vào workspace `@gksk/server`.
+- Tạo `server/src/middleware/rateLimit.ts` (`createLoginRateLimiter`, `extractClientIp`):
+  - Giới hạn tối đa **10 lần đăng nhập sai / cửa sổ trượt 15 phút / IP**; lần thứ 11 trở đi chặn trước khi kiểm mật khẩu và trả HTTP `429` (`TOO_MANY_LOGIN_ATTEMPTS`) kèm header `Retry-After`.
+  - Xóa bộ đếm sai khi đăng nhập thành công; hỗ trợ truyền đồng hồ giả `now` để kiểm thử xác định.
+- Tạo `server/src/middleware/requireAuth.ts`:
+  - `createSessionStore`: cấp phiên trong bộ nhớ kết hợp chữ ký HMAC-SHA256 (`timingSafeEqual`) qua cookie `gksk_session` (`HttpOnly`, `SameSite=Lax`, `Secure` khi `APP_ENV=production` hoặc HTTPS, `Path=/`, `Max-Age=28800` — 8 giờ), hỗ trợ thu hồi tức thì khi đăng xuất và kiểm soát đồng hồ `now`.
+  - `createRequireAuthMiddleware`: yêu cầu phiên hợp lệ cho 100% route nghiệp vụ (trả HTTP `401` `UNAUTHORIZED` nếu chưa đăng nhập hoặc phiên hết hạn/bị thu hồi).
+  - `createCsrfMiddleware`: với mọi method ghi (`POST`, `PUT`, `DELETE`, `PATCH`), bắt buộc header `X-Requested-With: gksk` (thiếu/sai trả HTTP `403` `CSRF_HEADER_REQUIRED`) và chặn `Content-Type` không thuộc `application/json` hoặc `multipart/form-data` (HTTP `403` `CSRF_INVALID_CONTENT_TYPE`).
+  - `listExpressRoutes`: hàm quét tự động toàn bộ router của ứng dụng Express phục vụ kiểm toán bảo mật.
+- Tạo `server/src/routes/auth.ts`:
+  - `createAuthRouter`: cài đặt `POST /api/auth/login` (kiểm CSRF + rate limit + so username hằng thời gian + `bcrypt.compare` + xoay phiên chống session fixation + log an toàn không lộ mật khẩu/cookie), `POST /api/auth/logout` (kiểm CSRF + thu hồi phiên + `clearCookie`), `GET /api/auth/me` (trả `200` nếu có phiên, `401` nếu chưa đăng nhập).
+  - `createConfigRouter`: cài đặt `GET /api/config` chỉ trả đúng 4 khóa công khai `{ appEnv, facilityId, facilityName, baseUrlHost }`, tuyệt đối không chứa mật khẩu, token, đường dẫn khóa hay thông tin DB.
+- Cập nhật `server/src/app.ts` và `server/src/index.ts`:
+  - Bật `helmet()` và ẩn `X-Powered-By`.
+  - Gắn các route công khai/xác thực (`/api/health`, `/api/config`, `/api/auth/*`), và bọc toàn bộ các router nghiệp vụ (`import`, `certificates`, `send`) sau `requireAuth` + `csrfMiddleware`.
+  - Truyền `config` và `logger` từ `loadConfigFromEnvFile()` vào `createApp({ config, logger })` tại `server/src/index.ts`.
+- Viết bộ kiểm thử bảo mật tự động `server/src/routes/auth.test.ts` (5 nhóm ca kiểm thử): quét tự động toàn bộ Express router khẳng định 100% endpoint nghiệp vụ trả `401` khi chưa đăng nhập; kiểm tra `403` khi thiếu/sai `X-Requested-With` trên mọi route ghi & chặn form `urlencoded`; kiểm tra vòng đời login/me/logout, thu hồi phiên, hết hạn 8 giờ, cờ cookie `HttpOnly`/`SameSite=Lax`/`Secure`; kiểm tra giới hạn 10 lần sai/15 phút/IP trả `429` + mở khóa sau 15 phút; kiểm tra `/api/config` + `helmet` + spy logger 0 rò rỉ bí mật.
+- Cập nhật các bộ test tích hợp S9–S11 (`server/src/services/send.test.ts`, `server/src/routes/certificates.test.ts`, `server/src/routes/import.test.ts`) sử dụng phiên đăng nhập thực qua `POST /api/auth/login` kèm header `X-Requested-With: gksk`.
+- Viết và chạy script kiểm chứng `scripts/verify-S12.ts` xuất bảng quét bảo mật toàn bộ 20 route ra `docs/evidence/S12/auth-security-report.md` và `docs/evidence/S12/verify-output.txt`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server Auth & Middleware: `server/src/routes/auth.ts`, `server/src/middleware/requireAuth.ts`, `server/src/middleware/rateLimit.ts`, `server/src/app.ts`, `server/src/index.ts`.
+- Kiểm thử: `server/src/routes/auth.test.ts`, `server/src/services/send.test.ts`, `server/src/routes/certificates.test.ts`, `server/src/routes/import.test.ts`.
+- Cấu hình gói & Kiểm chứng: `server/package.json`, `package-lock.json`, `scripts/verify-S12.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S12/`)
+- `docs/evidence/S12/auth-security-report.md`: bảng quét tự động 20 route Express (15/15 route nghiệp vụ trả `401` khi chưa đăng nhập; 9/9 route ghi trả `403` khi thiếu `X-Requested-With: gksk`; kết quả kiểm tra cờ cookie `HttpOnly`/`SameSite=Lax`/`Secure`, `/api/config`, `helmet`, và 11 lần thử đăng nhập sai với lần thứ 11 trả `429` + `Retry-After: 900`).
+- `docs/evidence/S12/verify-output.txt`: bản sao báo cáo kiểm chứng S12.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd run build -w @gksk/server`: PASS.
+- `npm.cmd test`: PASS — 19/19 test files, 245/245 tests (`shared`: 145, `server`: 89 [5 auth + 6 import + 7 certificates/export + 9 send/job + 10 db repo + 17 client + 5 signature + 6 envelope + 9 xml + 11 config + 3 logger + 1 app], `client`: 1, `mock-gksk-api`: 10).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S12.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Test xanh (`lint`, `typecheck`, `test` 245/245 PASS, 0 skip/only).
+- ✔ Có `docs/evidence/S12/auth-security-report.md` (và `docs/evidence/S12/verify-output.txt`).
+- ✔ Các test S9–S11 được cập nhật dùng phiên đăng nhập thực + CSRF header, vẫn xanh 100%.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Dùng `bcryptjs` v3 (thuần JS, tương thích chuẩn hash `$2a$`/`$2b$` của `bcrypt`, không cần native addon C++ trên Windows) và kho phiên trong bộ nhớ kết hợp chữ ký HMAC-SHA256 để thu hồi phiên tức thì khi đăng xuất.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S13 — Client: khung, đăng nhập, API layer** (`client/src/{main,App}.tsx`, `client/src/api/*`, `client/src/pages/LoginPage.tsx`, `client/src/components/EnvBanner.tsx`). Client gắn sẵn header `X-Requested-With: gksk` và `credentials: 'include'` trên mọi request trong `api/http.ts`, xử lý `401` → chuyển về trang đăng nhập.
 
 ## [S11] Excel: mẫu và import ghi đè thông minh — 2026-11-25 — Antigravity
 ### Đã làm

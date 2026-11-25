@@ -1,15 +1,21 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Writable } from 'node:stream';
+import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyRecord, type GkskRecord } from '@gksk/shared';
 import { createMockGkskApp } from '../../../tools/mock-gksk-api/dist/app.js';
-import { createApp } from '../app.js';
+import {
+  createApp,
+  DEFAULT_TEST_LOGIN_PASSWORD,
+  DEFAULT_TEST_LOGIN_USER,
+} from '../app.js';
 import { createInMemoryRepositories } from '../db/inMemoryRepo.js';
 import type { CertificateRow, DbRepositories } from '../db/types.js';
 import { createGkskClient } from '../gksk/client.js';
 import { createLogger } from '../logger.js';
+import { CSRF_HEADER_VALUE } from '../middleware/requireAuth.js';
 import {
   BATCH_SEND_INTERVAL_MS,
   createJobService,
@@ -19,6 +25,19 @@ import {
   computeCertificatePayload,
   createSendService,
 } from './sendService.js';
+
+async function createAuthenticatedAgent(app: Express) {
+  const agent = request.agent(app);
+  const loginRes = await agent
+    .post('/api/auth/login')
+    .set('X-Requested-With', CSRF_HEADER_VALUE)
+    .send({
+      username: DEFAULT_TEST_LOGIN_USER,
+      password: DEFAULT_TEST_LOGIN_PASSWORD,
+    });
+  expect(loginRes.status).toBe(200);
+  return agent;
+}
 
 function makeValidRecord(overrides: Partial<GkskRecord> = {}): GkskRecord {
   const base = createEmptyRecord();
@@ -241,7 +260,10 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       HOTEN: 'TEST NGUYEN VAN HOP LE',
     });
 
-    const res = await request(app).post(`/api/certificates/${cert.id}/send`);
+    const agent = await createAuthenticatedAgent(app);
+    const res = await agent
+      .post(`/api/certificates/${cert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('accepted');
     expect(res.body.certificateId).toBe(cert.id);
@@ -285,7 +307,10 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       'ready',
     );
 
-    const res = await request(app).post(`/api/certificates/${badCert.id}/send`);
+    const agent = await createAuthenticatedAgent(app);
+    const res = await agent
+      .post(`/api/certificates/${badCert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('invalid');
     expect(res.body.submission).toBeNull();
@@ -315,9 +340,13 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       SO: 'TEST.75001.S9.RETRY',
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // Kịch bản 3a: Mock timeout 1 lần rồi thành công ở lần thử thứ 2 trong cùng 1 lệnh send
     await setMockFailure({ mode: 'timeout', count: 1, timeoutMs: 300 });
-    const res1 = await request(app).post(`/api/certificates/${cert.id}/send`);
+    const res1 = await agent
+      .post(`/api/certificates/${cert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(res1.status).toBe(200);
     expect(res1.body.status).toBe('accepted');
     expect(res1.body.submission.attempts).toBe(2);
@@ -336,7 +365,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
     });
     await setMockFailure({ mode: '500', count: 4 });
 
-    const resFail = await request(app).post(`/api/certificates/${cert2.id}/send`);
+    const resFail = await agent
+      .post(`/api/certificates/${cert2.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resFail.status).toBe(200);
     expect(resFail.body.status).toBe('error');
     expect(resFail.body.submission.resultStatus).toBeNull();
@@ -348,7 +379,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
     const preservedSubmissionId = resFail.body.submission.id as number;
 
     // Khi bấm "Gửi lại" (POST /api/certificates/:id/send) mà dữ liệu giấy chưa đổi -> tái sử dụng cùng submission & msg_id
-    const resRetry = await request(app).post(`/api/certificates/${cert2.id}/send`);
+    const resRetry = await agent
+      .post(`/api/certificates/${cert2.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resRetry.status).toBe(200);
     expect(resRetry.body.status).toBe('accepted');
     expect(resRetry.body.reusedPendingSubmission).toBe(true);
@@ -365,7 +398,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       SO: 'TEST.75001.S9.202_IDEMPOTENT',
     });
     await setMockFailure({ mode: 'disconnect-after-save', count: 1 });
-    const resIdempotent = await request(app).post(`/api/certificates/${cert3.id}/send`);
+    const resIdempotent = await agent
+      .post(`/api/certificates/${cert3.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resIdempotent.status).toBe(200);
     expect(resIdempotent.body.status).toBe('accepted');
     expect(resIdempotent.body.recoveredViaStatus).toBe(true);
@@ -379,8 +414,12 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       HOTEN: 'TEST NGUYEN VAN BAN DAU',
     });
 
+    const agent = await createAuthenticatedAgent(app);
+
     // Lần gửi 1
-    const res1 = await request(app).post(`/api/certificates/${cert.id}/send`);
+    const res1 = await agent
+      .post(`/api/certificates/${cert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(res1.status).toBe(200);
     expect(res1.body.status).toBe('accepted');
     const firstMsgId = res1.body.submission.msgId as string;
@@ -403,7 +442,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
     });
 
     // Lần gửi 2 sau khi dữ liệu đã thay đổi
-    const res2 = await request(app).post(`/api/certificates/${cert.id}/send`);
+    const res2 = await agent
+      .post(`/api/certificates/${cert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(res2.status).toBe(200);
     expect(res2.body.status).toBe('accepted');
     expect(res2.body.reusedPendingSubmission).toBe(false);
@@ -430,6 +471,8 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
     // Khởi tạo stack với facilityId='75999' cho riêng 1 giấy để vượt qua validateRecord cục bộ nhưng bị Mock Server (token 75001) từ chối GKSK_FACILITY_MISMATCH
     const { app, repos } = createTestStack();
 
+    const agent = await createAuthenticatedAgent(app);
+
     // 5a. Kịch bản Postman 2.4: giấy có nhiều cảnh báo không chặn (KETLUAN lạ, NONGDOCON chữ, NOICAP > 30 ký tự)
     const warnCert = await seedCertificate(repos, {
       SO: 'TEST.75001.S9.204_WARNINGS',
@@ -438,7 +481,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       NOICAP: 'N'.repeat(31),
       SOCMND_PASSPORT: '000000000000',
     });
-    const resWarn = await request(app).post(`/api/certificates/${warnCert.id}/send`);
+    const resWarn = await agent
+      .post(`/api/certificates/${warnCert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resWarn.status).toBe(200);
     expect(resWarn.body.status).toBe('accepted');
     const warningCodes = (resWarn.body.submission.warnings as Array<{ code: string }>).map(
@@ -456,13 +501,14 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
 
     // 5b. Giấy bị Hệ thống Sở trả HTTP 200 nhưng data.status = 'rejected' -> lưu đầy đủ errors_json
     const mismatchStack = createTestStack({ facilityId: '75999' });
+    const mismatchAgent = await createAuthenticatedAgent(mismatchStack.app);
     const rejectedCert = await seedCertificate(mismatchStack.repos, {
       SO: 'TEST.75001.S9.REJECTED',
       IDBENHVIEN: '75999',
     });
-    const resRejected = await request(mismatchStack.app).post(
-      `/api/certificates/${rejectedCert.id}/send`,
-    );
+    const resRejected = await mismatchAgent
+      .post(`/api/certificates/${rejectedCert.id}/send`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resRejected.status).toBe(200);
     expect(resRejected.body.status).toBe('rejected');
 
@@ -479,7 +525,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
 
     // 5c. POST /api/submissions/:id/refresh tra cứu lại trạng thái trên Hệ thống Sở
     const subId = resWarn.body.submission.id as number;
-    const resRefresh = await request(app).post(`/api/submissions/${subId}/refresh`);
+    const resRefresh = await agent
+      .post(`/api/submissions/${subId}/refresh`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resRefresh.status).toBe(200);
     expect(resRefresh.body.found).toBe(true);
     expect(resRefresh.body.status).toBe('accepted');
@@ -494,9 +542,9 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       sendDatetime: 1781084650736,
       dataSha256: 'A'.repeat(64),
     });
-    const resRefresh404 = await request(app).post(
-      `/api/submissions/${ghostSub.id}/refresh`,
-    );
+    const resRefresh404 = await agent
+      .post(`/api/submissions/${ghostSub.id}/refresh`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resRefresh404.status).toBe(200);
     expect(resRefresh404.body.found).toBe(false);
     expect(resRefresh404.body.httpStatus).toBe(404);
@@ -613,7 +661,12 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
       logger: logCollector.logger,
     });
 
-    const startRes = await request(batchApp).post('/api/send').send({ ids });
+    const batchAgent = await createAuthenticatedAgent(batchApp);
+
+    const startRes = await batchAgent
+      .post('/api/send')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ ids });
     expect(startRes.status).toBe(200);
     expect(startRes.body.total).toBe(25);
     const jobId = startRes.body.jobId as string;
@@ -621,7 +674,7 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
 
     await batchJobService.waitForJob(jobId);
 
-    const jobRes = await request(batchApp).get(`/api/jobs/${jobId}`);
+    const jobRes = await batchAgent.get(`/api/jobs/${jobId}`);
     expect(jobRes.status).toBe(200);
     expect(jobRes.body.status).toBe('completed');
     expect(jobRes.body.total).toBe(25);
@@ -846,28 +899,40 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
 
   it('9. Kiểm tra xử lý lỗi đầu vào (400/404) trên các endpoint routes/send.ts', async () => {
     const { app } = createTestStack();
+    const agent = await createAuthenticatedAgent(app);
 
-    const resBadCertId = await request(app).post('/api/certificates/abc/send');
+    const resBadCertId = await agent
+      .post('/api/certificates/abc/send')
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resBadCertId.status).toBe(400);
     expect(resBadCertId.body.error.code).toBe('INVALID_CERTIFICATE_ID');
 
-    const resNotFoundCert = await request(app).post('/api/certificates/9999/send');
+    const resNotFoundCert = await agent
+      .post('/api/certificates/9999/send')
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resNotFoundCert.status).toBe(404);
     expect(resNotFoundCert.body.error.code).toBe('CERTIFICATE_NOT_FOUND');
 
-    const resEmptyBatch = await request(app).post('/api/send').send({ ids: [] });
+    const resEmptyBatch = await agent
+      .post('/api/send')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ ids: [] });
     expect(resEmptyBatch.status).toBe(400);
     expect(resEmptyBatch.body.error.code).toBe('INVALID_BATCH_IDS');
 
-    const resNotFoundJob = await request(app).get('/api/jobs/non-existent-job-id');
+    const resNotFoundJob = await agent.get('/api/jobs/non-existent-job-id');
     expect(resNotFoundJob.status).toBe(404);
     expect(resNotFoundJob.body.error.code).toBe('JOB_NOT_FOUND');
 
-    const resBadSubId = await request(app).post('/api/submissions/0/refresh');
+    const resBadSubId = await agent
+      .post('/api/submissions/0/refresh')
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resBadSubId.status).toBe(400);
     expect(resBadSubId.body.error.code).toBe('INVALID_SUBMISSION_ID');
 
-    const resNotFoundSub = await request(app).post('/api/submissions/9999/refresh');
+    const resNotFoundSub = await agent
+      .post('/api/submissions/9999/refresh')
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
     expect(resNotFoundSub.status).toBe(404);
     expect(resNotFoundSub.body.error.code).toBe('SUBMISSION_NOT_FOUND');
   });
