@@ -19,10 +19,12 @@
     "typecheck": "npm run build -w @gksk/shared && npm run build -w @gksk/mock-gksk-api && npm run typecheck --workspaces --if-present",
     "test": "npm run build -w @gksk/shared && npm run build -w @gksk/mock-gksk-api && npm run test --workspaces --if-present",
     "build": "npm run build -w @gksk/shared && npm run build -w @gksk/server && npm run build -w @gksk/client",
+    "test:e2e": "playwright test",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^3.2.7",
     "concurrently": "^9.1.2",

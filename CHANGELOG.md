@@ -4,8 +4,8 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S16 — Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc**
-- Bước kế tiếp: **S17 — Hardening và E2E trên mock**
+- Bước đã xong: **S17 — Hardening và E2E trên mock**
+- Bước kế tiếp: **S18 — Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật (thủ công, có người dùng tham gia)**
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
 
 ## Thay đổi tài liệu
@@ -37,6 +37,53 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S17] Hardening và E2E trên mock — 2026-11-25 — Antigravity
+### Đã làm
+- Cài đặt `@playwright/test` và cấu hình `playwright.config.ts` + script `"test:e2e": "playwright test"` trong `package.json` gốc.
+- Tạo `tests/e2e/dev-mock-server.ts` khởi chạy tích hợp 3 dịch vụ (`Mock GKSK API` cổng `4010`, `GKSKLaiXe API Server` cổng `3001` với `InMemoryRepositories` & `pino` ghi log thực tế ra `docs/evidence/S17/e2e-server.log`, và `Vite Client` cổng `5173`).
+- Tạo bộ kiểm thử toàn trình `tests/e2e/gksk.e2e.spec.ts` cho 3 luồng nghiệp vụ khép kín:
+  - **Luồng 1**: Đăng nhập (`/login`) → Tải mẫu Excel (`GKSK_mau_nhap_lieu.xlsx`, kiểm tra đủ 2 sheet `GKSK` 23 cột và `HuongDan`) → Import file `mixed_valid_invalid.xlsx` (5 dòng có `SO` tự động tick chọn gồm 3 `ready` + 2 `invalid`, 1 dòng thiếu `SO` khóa checkbox) → Lưu vào Danh sách đối soát → Kiểm tra số đếm 4 tab đối soát (`Tất cả: 5`, `Chưa đẩy: 3`, `Đã đẩy: 0`, `Cần xử lý: 2`) và chụp ảnh `e2e-flow1-import-reconcile.png`.
+  - **Luồng 2**: Mở Ngăn trượt (`CertificateDetailDrawer`) kiểm tra đủ 25 trường chỉ đọc (tách riêng 4 trường nhạy cảm `NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`) + Xem trước XML (`XmlPreview`) + Sao chép XML + Tải `<SO>.xml` lẻ → Tải gói `.zip` chứa 3 file XML hợp lệ → Đẩy cổng hàng loạt 3 giấy hợp lệ (`3/3 accepted`) → Xuất file Excel đối soát 29 cột (`GKSK_doi_soat_*.xlsx`) và chụp ảnh `e2e-flow2-drawer-xml-send-export.png`.
+  - **Luồng 3**: Dùng `exceljs` sửa trực tiếp cột `NGAYSINH` của 2 dòng lỗi ngay trên file Excel đối soát 29 cột vừa xuất → Import đè lại vào `/import` (xác nhận tự động bỏ qua 6 cột đối soát, tự động bỏ chọn 3 dòng `accepted` không đổi và tự động tick chọn 2 dòng `overwrite_pending`) → Đẩy cổng dòng sửa #1 thành công → Giả lập lỗi mạng `HTTP 500 x 4` trên mock khi đẩy dòng sửa #2 (`status = 'error'`, hiện nút `🔄 Gửi lại`) → Khôi phục mock và bấm `🔄 Gửi lại` → Thành công (`accepted`) giữ nguyên `msg_id` (`Số lần thử: 5`, huy hiệu `🔄 Giữ nguyên msg_id khi gửi lại`, tổng `5/5 accepted`) và chụp ảnh `e2e-flow3-reimport-retry-same-msgid.png`.
+- Bổ sung `<link rel="icon" href="data:," />` trong `client/index.html` để trình duyệt không phát sinh lỗi 404 `/favicon.ico` trên console, và thêm phương thức `resetAll()` trên `InMemoryRepositories` (`server/src/db/inMemoryRepo.ts`).
+- Tạo `docs/SECURITY-CHECKLIST.md` đã rà soát và tick đủ `[x]` toàn bộ 13 hạng mục bảo mật trong `docs/TEST-PLAN.md §6` kèm bằng chứng cụ thể.
+- Viết và chạy `scripts/verify-S17.ts`:
+  - Chạy Playwright E2E **3 lần liên tiếp** (`3/3 passed` mỗi lần, 0 flaky).
+  - Đo hiệu năng import `big_1000.xlsx` (1000 dòng): **`390 ms` (< 10 giây)**; gửi hàng loạt 1000 giấy qua `JobService` + `SendService`: **`574 ms`** (`1000/1000 accepted`, không treo).
+  - Quét file log thực tế `docs/evidence/S17/e2e-server.log` (102 dòng log `pino`) cho các mẫu `TEST NGUYEN`, `TESTGKSK`, `Bearer`, `eyJ`, `DB_PASSWORD` → **0 kết quả**.
+  - Kiểm tra `npm audit --omit=dev` (`0 high`, `0 critical`), `.env` không nằm trong git (`0 kết quả`), `0 dangerouslySetInnerHTML`, `0 TODO/FIXME` chưa xử lý, và xuất báo cáo tổng hợp ra `docs/evidence/S17/e2e-and-security-report.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- E2E & Cấu hình: `playwright.config.ts`, `tests/e2e/dev-mock-server.ts`, `tests/e2e/gksk.e2e.spec.ts`, `package.json`, `eslint.config.js`, `client/index.html`, `server/src/db/inMemoryRepo.ts`.
+- Tài liệu Bảo mật & Kiểm chứng: `docs/SECURITY-CHECKLIST.md`, `scripts/verify-S17.ts`.
+
+### Bằng chứng bàn giao (`docs/evidence/S17/`)
+- `docs/evidence/S17/e2e-and-security-report.md` (và `verify-output.txt`): báo cáo tổng hợp kết quả 3 lượt chạy Playwright E2E liên tiếp, đo hiệu năng 1000 dòng / 1000 giấy, quét 0 rò rỉ PII trên log E2E và kết quả `npm audit --omit=dev`.
+- `docs/evidence/S17/e2e-flow1-import-reconcile.png`: ảnh chụp tự động từ Playwright kết thúc Luồng 1 (1280×900).
+- `docs/evidence/S17/e2e-flow2-drawer-xml-send-export.png`: ảnh chụp tự động từ Playwright kết thúc Luồng 2 (1280×900).
+- `docs/evidence/S17/e2e-flow3-reimport-retry-same-msgid.png`: ảnh chụp tự động từ Playwright kết thúc Luồng 3 (1280×900).
+- `docs/evidence/S17/GKSK_doi_soat_da_sua_loi.xlsx`: file Excel đối soát 29 cột thực tế được xuất ở Luồng 2 và sửa trực tiếp 2 dòng lỗi để Import đè ở Luồng 3.
+- `docs/evidence/S17/e2e-server.log`: file log `pino` thực tế của server thu thập qua 3 lượt chạy E2E (đã quét 0 PII/bí mật).
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 264/264 tests (`shared`: 145, `server`: 89, `client`: 20, `mock-gksk-api`: 10).
+- `npm.cmd run test:e2e`: PASS — 3/3 luồng E2E xanh trong 3 lượt chạy liên tiếp.
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S17.ts`: PASS 100%.
+
+### Cổng qua bước
+- ✔ E2E xanh 3 lần liên tiếp (không flaky).
+- ✔ Có đủ ảnh E2E (`e2e-flow1-import-reconcile.png`, `e2e-flow2-drawer-xml-send-export.png`, `e2e-flow3-reimport-retry-same-msgid.png`) và `e2e-and-security-report.md` trong `docs/evidence/S17/`.
+- ✔ Checklist bảo mật `docs/SECURITY-CHECKLIST.md` đã tick đủ 13/13 mục kèm bằng chứng.
+- ✔ Không còn `TODO`/`FIXME` chưa được ghi vào `OPEN-QUESTIONS.md`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác. Cấu hình Playwright sử dụng trình duyệt Chromium/Chrome sẵn có trên máy (`C:\Program Files\Google\Chrome\Application\chrome.exe`, fallback sang Edge/Chromium mặc định) giúp chạy E2E nhanh và ổn định.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước **S18 — Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật (thủ công, có người dùng tham gia)** hoặc **S19 — Đóng gói và hướng dẫn vận hành** theo điều phối của người dùng.
 
 ## [S16] Client: Đẩy cổng hàng loạt & Ngăn trượt (Drawer) Chi tiết chỉ đọc — 2026-11-25 — Antigravity
 ### Đã làm

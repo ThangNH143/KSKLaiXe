@@ -682,6 +682,20 @@ export class InMemoryRepositories implements DbRepositories {
       batchFilename,
     };
   }
+
+  /**
+   * Làm sạch toàn bộ dữ liệu trong bộ nhớ RAM (dùng cho E2E / test cô lập giữa các lượt chạy).
+   */
+  public resetAll(): void {
+    this.batchStore.clear();
+    this.certificateStore.clear();
+    this.certificateIdBySo.clear();
+    this.submissionStore.clear();
+    this.submissionIdByMsgId.clear();
+    this.nextBatchId = 1;
+    this.nextCertificateId = 1;
+    this.nextSubmissionId = 1;
+  }
 }
 
 export function createInMemoryRepositories(): InMemoryRepositories {
