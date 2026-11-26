@@ -4,13 +4,15 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S18 — Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật (thủ công, có người dùng tham gia)**
-- Bước kế tiếp: **S19 — Đóng gói và hướng dẫn vận hành**
+- Phiên bản phát hành: **`v1.0.0`** (Hoàn thành toàn bộ 20/20 bước `S0`–`S19`)
+- Bước đã xong: **S19 — Đóng gói và hướng dẫn vận hành**
+- Bước kế tiếp: *(Hoàn tất v1.0.0 — Sẵn sàng triển khai vận hành thực tế)*
 - Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☑
 
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-26 | `docs/DEPLOY.md`, `docs/USER-GUIDE.md` | Bổ sung tài liệu triển khai Windows Server + MSSQL (`gksk_*`, NSSM/PM2, Reverse Proxy HTTPS, Backup/Logrotate, Đổi khóa RSA/Mật khẩu) và tài liệu hướng dẫn sử dụng tiếng Việt nhúng 15 ảnh chụp màn hình thực tế từ `docs/evidence/` | Bàn giao vận hành phiên bản `1.0.0` (S19) |
 | 2026-11-25 | `docs/OPEN-QUESTIONS.md`, `docs/DATA-SPEC.md`, `docs/TEST-PLAN.md`, `project_context.md` | Chốt hoàn toàn các câu hỏi mở còn lại sau kiểm thử S18: **Q2** (thẻ tùy chọn rỗng xuất `<TAG></TAG>`), **Q5** (v1 gửi XML chưa ký, ký số để dành v2), **Q6** (hỗ trợ `GKSK_PRIVATE_KEY_PATH` ký RSA-SHA256 hoặc `CHUA-KY-...`), **Q8** (`sender_id = GKSK_FACILITY_ID`), **Q11** (`NGAYKETLUAN` = Ngày kết luận / ngày cấp giấy), **Q13** (độ dài tối đa đếm theo ký tự Unicode NFC, xác nhận bằng chuỗi 30 ký tự tiếng Việt có dấu / 38 bytes UTF-8). Tick hoàn tất 14/14 bước trong `TEST-PLAN.md §5` | Nghiệm thu bước S18 |
 | 2026-11-23 | `docs/STEP-PROMPTS.md` | Tạo bộ 20 prompt copy-paste cho từng bước từ `S0` đến `S19` kèm khuyến nghị Model Gemini 4 (`Neon Medium`, `Neon High`, `Argon Medium`, `Argon High` — không dùng Carbon) | Để người dùng copy-paste trực tiếp vào từng phiên chat theo đúng chuẩn quy trình |
 | 2026-11-23 | `AGENTS.md`, `.agents/skills/{gksk-step-runner,gksk-protocol-guard}/SKILL.md` | Tạo Workspace Rule tự động nạp `AGENTS.md` ở thư mục gốc và 2 Workspace Skills (`gksk-step-runner`, `gksk-protocol-guard`) để mọi phiên làm việc của Agent/Subagent đều tự động tuân thủ quy trình 1 bước/1 lần, sinh bằng chứng `docs/evidence/S<n>/`, báo cáo 5 mục, an toàn MSSQL `gksk_*` và chuẩn giao thức XML/chữ ký gói tin | Đảm bảo chất lượng thực thi cao nhất qua nhiều phiên làm việc |
@@ -38,6 +40,42 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [v1.0.0 / S19] Đóng gói và hướng dẫn vận hành — 2026-11-26 — Antigravity
+### Đã làm
+- Cập nhật `server/src/app.ts` bổ sung `resolveClientDistDir()` và cơ chế tự động phục vụ thư mục tĩnh `client/dist` (kèm SPA fallback trả `client/dist/index.html` cho mọi route frontend, không chặn `/api/*`) khi chạy ở chế độ production (`NODE_ENV=production` hoặc `serveClientDist: true`) — đóng gói toàn bộ ứng dụng chạy trong **1 tiến trình Node/Express duy nhất, 1 cổng duy nhất**.
+- Bổ sung kiểm thử tự động trong `server/src/app.test.ts` xác nhận phục vụ `/` (`index.html`), SPA route `/import`, tài sản tĩnh `/assets/*`, `/api/health` và vẫn chặn `401` cho `/api/certificates` khi chưa đăng nhập.
+- Viết mới `docs/DEPLOY.md` hướng dẫn chi tiết triển khai & vận hành trên Windows Server: yêu cầu Node ≥ 20 LTS, khởi tạo Database & phân quyền tài khoản SQL tối thiểu cho 4 bảng `dbo.gksk_*`, sinh hash `bcrypt` và `SESSION_SECRET`, cấu hình `.env`, chạy dịch vụ nền bằng **NSSM** hoặc **PM2**, cấu hình Reverse Proxy HTTPS (Caddy / IIS ARR), sao lưu MSSQL hàng ngày, xoay vòng log `pino`, và quy trình đổi mật khẩu/khóa RSA/nâng cấp Node.
+- Viết mới `docs/USER-GUIDE.md` bằng tiếng Việt dễ hiểu cho nhân viên y tế, nhúng **15 ảnh chụp màn hình thực tế** từ `docs/evidence/` cho trọn vẹn quy trình 6 bước: Đăng nhập → Tải mẫu Excel → Import Excel & ghi đè thông minh → Kiểm tra 4 tab Đối soát & Xem Drawer chi tiết 25 trường/XML/Lịch sử → Xuất XML (`.xml` / `.zip`) & Đẩy cổng → Xuất Excel đối soát 29 cột & sửa lỗi Import đè lại.
+- Viết và chạy `scripts/verify-S19.mjs`: chạy `npm run build`, khởi động tiến trình đơn `NODE_ENV=production node server/dist/index.js` trên cổng `3019`, kiểm tra `/api/health`, `/api/config`, `/` và `/import` trên cùng 1 cổng, mở trình duyệt chụp ảnh `docs/evidence/S19/production-single-port.png`, quét log 0 rò rỉ bí mật và xuất biên bản `docs/evidence/S19/verify-output.txt`.
+- Nâng phiên bản ứng dụng lên **`1.0.0`** trong `package.json`, cập nhật `CHANGELOG.md` và đặt thẻ git **`v1.0.0`**.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Server & Kiểm thử: `server/src/app.ts`, `server/src/app.test.ts`, `package.json`.
+- Tài liệu Vận hành & Sử dụng: `docs/DEPLOY.md`, `docs/USER-GUIDE.md`, `CHANGELOG.md`.
+- Script kiểm chứng: `scripts/verify-S19.mjs`.
+
+### Bằng chứng bàn giao (`docs/evidence/S19/`)
+- `docs/evidence/S19/verify-output.txt`: biên bản kiểm chứng `npm run build` + khởi chạy tiến trình đơn `server/dist/index.js` trên cổng `3019`, kiểm tra `/api/health`, `/api/config`, `/`, `/import`, `/api/certificates` (`401`), kiểm tra 15 ảnh nhúng trong `USER-GUIDE.md` và quét log 0 rò rỉ.
+- `docs/evidence/S19/production-single-port.png`: ảnh chụp màn hình trình duyệt mở trực tiếp bản build production từ cổng của Express server (`http://127.0.0.1:3019`, có banner đỏ production).
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 265/265 tests (`shared`: 145, `server`: 90, `client`: 20, `mock-gksk-api`: 10).
+- `node scripts/verify-S19.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Bản build production (`npm run build`) chạy từ một tiến trình Express duy nhất (`NODE_ENV=production node server/dist/index.js`) phục vụ cả giao diện tĩnh React và `/api/*` trên cùng 1 cổng.
+- ✔ Có đủ `docs/DEPLOY.md`, `docs/USER-GUIDE.md` (nhúng 15 ảnh thực tế), `docs/evidence/S19/production-single-port.png` và `docs/evidence/S19/verify-output.txt`.
+- ✔ `CHANGELOG.md` và `package.json` ghi phiên bản `1.0.0`.
+- ✔ Đặt thẻ git `v1.0.0`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Không có sai khác.
+
+### Ghi chú cho Agent sau
+- Toàn bộ 20 bước (`S0`–`S19`) của dự án **GKSKLaiXe v1.0.0** đã hoàn tất và bàn giao đầy đủ.
 
 ## [S18] Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật — 2026-11-25 — Antigravity
 ### Đã làm

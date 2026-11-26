@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
@@ -78,6 +81,30 @@ export interface CreateAppOptions {
   today?: string | Date;
   now?: () => number;
   logger?: Logger;
+  /** Bật phục vụ giao diện tĩnh `client/dist` (mặc định tự bật khi `NODE_ENV=production`). */
+  serveClientDist?: boolean;
+  /** Đường dẫn tùy chỉnh tới thư mục `client/dist` (mặc định tự dò tương đối theo monorepo). */
+  clientDistDir?: string;
+}
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export function resolveClientDistDir(customDir?: string): string | null {
+  const candidates = [
+    ...(customDir ? [path.resolve(customDir)] : []),
+    path.resolve(__dirname, '..', '..', '..', 'client', 'dist'),
+    path.resolve(__dirname, '..', '..', 'client', 'dist'),
+    path.resolve(process.cwd(), 'client', 'dist'),
+    path.resolve(process.cwd(), '..', 'client', 'dist'),
+  ];
+
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'index.html'))) {
+      return dir;
+    }
+  }
+  return null;
 }
 
 function resolveHostSafely(rawUrl: string): string {
@@ -269,6 +296,34 @@ export function createApp(options?: CreateAppOptions): Express {
   protectedApi.use(createCertificatesRouter({ certificateService }));
   protectedApi.use(createSendRouter({ sendService, jobService }));
   app.use('/api', protectedApi);
+
+  // Chế độ production: phục vụ luôn giao diện tĩnh React (`client/dist`) trên cùng 1 tiến trình & 1 cổng
+  const shouldServeClient =
+    options?.serveClientDist ?? process.env.NODE_ENV === 'production';
+  if (shouldServeClient) {
+    const clientDistDir = resolveClientDistDir(options?.clientDistDir);
+    if (clientDistDir) {
+      const indexHtmlPath = path.join(clientDistDir, 'index.html');
+      app.use(
+        express.static(clientDistDir, {
+          index: false,
+          maxAge: '1d',
+        }),
+      );
+      app.get('*', (req, res, next) => {
+        if (req.path === '/api' || req.path.startsWith('/api/')) {
+          next();
+          return;
+        }
+        res.sendFile(indexHtmlPath);
+      });
+    } else {
+      log.warn(
+        { nodeEnv: process.env.NODE_ENV },
+        'Không tìm thấy thư mục client/dist/index.html để phục vụ giao diện tĩnh',
+      );
+    }
+  }
 
   app.use(createErrorHandler(log));
 

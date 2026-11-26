@@ -1,0 +1,15 @@
+# Báo cáo Kiểm chứng S19 — Đóng gói Production 1 Tiến trình / 1 Cổng
+- Thời gian chạy: 2026-11-26T01:28:55.746Z
+- ✅ Tài liệu vận hành & hướng dẫn: docs/DEPLOY.md (13288 bytes), docs/USER-GUIDE.md (14274 bytes, 15 ảnh minh họa hợp lệ).
+- Đang chạy `npm run build`...
+- ✅ Build thành công: server/dist/index.js và client/dist/index.html đều sẵn sàng.
+- ✅ Tiến trình đơn server/dist/index.js đã khởi động tại http://127.0.0.1:3019
+- ✅ GET http://127.0.0.1:3019/api/health -> HTTP 200 {"ok":true}
+- ✅ GET http://127.0.0.1:3019/api/config -> HTTP 200 {"appEnv":"production","facilityId":"75001","facilityName":"Benh vien Da khoa Dong Nai","baseUrlHost":"ksktd.dongnai.gov.vn"}
+- ✅ GET http://127.0.0.1:3019/ và http://127.0.0.1:3019/import -> HTTP 200 text/html (phục vụ trực tiếp từ client/dist trên cùng cổng 3019).
+- ✅ GET http://127.0.0.1:3019/api/certificates (chưa đăng nhập) -> HTTP 401 UNAUTHORIZED.
+- ✅ Chụp ảnh màn hình bản build production (1 cổng 3019, 0 lỗi console): docs/evidence/S19/production-single-port.png (71112 bytes).
+- ✅ Quét log tiến trình đơn production: 0 rò rỉ mật khẩu/bí mật.
+
+## Kết luận
+- **100% điều kiện kiểm chứng bước S19 ĐẠT (PASS).**
