@@ -420,3 +420,122 @@ Thực hiện DUY NHẤT bước **S19 — Đóng gói và hướng dẫn vận 
 4. Viết và chạy script `scripts/verify-S19.mjs` chạy `npm run build`, khởi chạy tiến trình đơn `server/dist/index.js`, kiểm tra truy cập giao diện tĩnh + `/api/health` + `/api/config` trên cùng 1 cổng, lưu log vào `docs/evidence/S19/verify-output.txt` và chụp ảnh màn hình `docs/evidence/S19/production-single-port.png`.
 5. Cập nhật `CHANGELOG.md` lên phiên bản `1.0.0`, đặt thẻ git `v1.0.0` và báo cáo nghiệm thu tổng kết theo đúng **Mẫu Báo cáo bàn giao 5 mục bắt buộc**.
 ```
+
+---
+
+## PHẦN 2 — Bộ Prompt Thêm / Sửa Chức năng, Sửa Lỗi & Bảo trì Code (Sau v1.0.0)
+
+> Khi dự án đã hoàn thành `v1.0.0`, mọi chỉnh sửa hoặc bổ sung tính năng mới đều phải đi qua **Quy trình Thay đổi An toàn 6 bước (Safe Change Loop)** để đảm bảo:
+> 1. **Không sửa lan man** sang các file/chức năng đang chạy ổn định ngoài phạm vi yêu cầu.
+> 2. **Không phá vỡ 265+ bài kiểm thử hiện có** và không vi phạm 17 điều cấm trong `docs/PROJECT-RULES.md`.
+> 3. **Luôn có bằng chứng thực tế** (ảnh chụp màn hình trình duyệt hoặc file mẫu `.xml`/`.xlsx`/`.zip` + báo cáo 5 mục).
+
+### 1. Bảng chọn Model Gemini 4 (Không dùng Carbon) theo loại thay đổi
+
+| Loại yêu cầu thêm / sửa code | Model khuyên dùng | Khi nào sử dụng |
+|---|---|---|
+| **Sửa nhỏ UI / Đổi nhãn / Thêm cột hiển thị đơn giản** | **Gemini 4 Neon (High)** | Đổi câu chữ tiếng Việt, chỉnh CSS/bố cục nhẹ trên bảng Đối soát hoặc Drawer, không đụng tới máy trạng thái hay DB |
+| **Thêm / Sửa chức năng Giao diện, Bộ lọc đối soát, Xuất file** | **Gemini 4 Argon (Medium)** | Thêm bộ lọc mới, thêm nút thao tác, sửa cấu trúc cột file Excel đối soát, sửa luật validate trong `shared` |
+| **Sửa logic lõi (Import ghi đè, Máy trạng thái Đẩy cổng, Retry, MSSQL `gksk_*`) hoặc Sửa lỗi phức tạp** | **Gemini 4 Argon (High)** | Thay đổi luồng `sendService`, `importService`, `gkskClient`, chữ ký gói tin, hoặc thay đổi liên quan cả `shared` + `server` + `client` |
+
+---
+
+### 2. Mẫu Prompt Đa Năng — Thêm / Sửa Chức năng hoặc Sửa Code (Khuyên dùng chung)
+- **Model chọn trên UI**:
+  - Chọn **`Gemini 4 Argon (Medium)`** cho thay đổi vừa phải (UI, bộ lọc, validate, xuất file).
+  - Chọn **`Gemini 4 Argon (High)`** cho thay đổi phức tạp (luồng đẩy cổng, retry, import ghi đè, DB MSSQL, hoặc thay đổi xuyên suốt nhiều tầng).
+
+```text
+Hãy kích hoạt skill `gksk-step-runner` và `gksk-protocol-guard` (nếu liên quan XML/API/Excel), đồng thời đọc `AGENTS.md`, `project_context.md`, `docs/PROJECT-RULES.md` và mục mới nhất của `CHANGELOG.md`.
+
+Tôi cần thực hiện yêu cầu thêm/sửa sau đây trong dự án:
+"""
+[MÔ TẢ CHI TIẾT YÊU CẦU THÊM / SỬA CHỨC NĂNG HOẶC LỖI CẦN SỬA Ở ĐÂY]
+"""
+
+Yêu cầu bạn thực hiện nghiêm ngặt theo **Quy trình Thay đổi An toàn 6 bước** sau (TUYỆT ĐỐI không bỏ bước, không sửa lan man ngoài phạm vi):
+
+1. **Phân tích phạm vi & Kiểm tra xung đột trước khi sửa**:
+   - Xác định rõ những file cần sửa và những chức năng hiện có liên quan.
+   - Kiểm tra xem yêu cầu có mâu thuẫn với `docs/API-CONTRACT.md`, `docs/DATA-SPEC.md`, `docs/ARCHITECTURE.md` hay `docs/PROJECT-RULES.md` (§3 Điều CẤM) không. Nếu có điểm chưa rõ hoặc có nguy cơ làm hỏng quy chuẩn cổng Sở Y tế / an toàn MSSQL `gksk_*`, hãy **dừng lại hỏi tôi trước khi sửa code**.
+2. **Tài liệu đi trước (`docs/PROJECT-RULES.md §1.2`)**:
+   - Nếu thay đổi có làm đổi quy tắc dữ liệu, API nội bộ, schema hay luồng màn hình, hãy cập nhật file tài liệu tương ứng trong `docs/` trước.
+3. **Thực thi code tối thiểu & Đúng trọng tâm**:
+   - Chỉ sửa đúng các hàm/component cần thiết cho yêu cầu trên; giữ nguyên hành vi của các chức năng đang hoạt động.
+   - Tuân thủ tuyệt đối: TypeScript `strict` (không `any`), mọi bảng MSSQL có tiền tố `gksk_*` và truy vấn dùng `.input()` tham số hóa (đồng bộ cả `InMemoryRepositories` lẫn `MssqlRepositories`), không log PII/token/mật khẩu, không lộ 4 trường nhạy cảm ra bảng danh sách đối soát.
+4. **Viết Test mới / Test hồi quy & Chạy Cổng chất lượng**:
+   - Nếu là sửa lỗi: viết unit/integration test tái hiện lỗi trước, sau đó sửa code để test xanh.
+   - Nếu là thêm/sửa chức năng: viết bổ sung test bao phủ đầy đủ ca chuẩn và ca biên của chức năng vừa thêm/sửa.
+   - Chạy toàn bộ `npm run lint && npm run typecheck && npm test` (và `npm run build`): bắt buộc xanh 100%, 0 test cũ bị gãy, 0 test bị `skip` hoặc `only`.
+5. **Sinh bằng chứng thực tế (`docs/evidence/CR-<YYYYMMDD>-<slug>/`)**:
+   - Nếu có thay đổi Giao diện (`client/`): khởi chạy `npm run dev:mock`, dùng Browser Subagent mở trình duyệt thao tác trực tiếp tính năng vừa sửa + kiểm tra các màn hình liên quan không bị lỗi console/vỡ giao diện, và **chụp ảnh màn hình thực tế** lưu vào `docs/evidence/CR-<YYYYMMDD>-<slug>/`.
+   - Nếu có thay đổi Backend / Excel / XML / DB: viết hoặc chạy script kiểm chứng sinh file mẫu thực tế (`.xml`, `.xlsx`, `.zip`, log kiểm chứng) lưu vào `docs/evidence/CR-<YYYYMMDD>-<slug>/`.
+6. **Cập nhật `CHANGELOG.md` & Báo cáo 5 mục bắt buộc**:
+   - Ghi mục mới lên đầu `CHANGELOG.md`.
+   - Báo cáo lại cho tôi theo đúng **Mẫu Báo cáo bàn giao 5 mục bắt buộc** (1. 📦 File đã tạo/sửa kèm link; 2. 🛠️ Lệnh/Script kiểm chứng & kết quả; 3. 📸 Ảnh chụp màn hình hoặc file mẫu thực tế; 4. 🧪 Kết quả toàn bộ bộ test tự động; 5. 🚦 Bảng xác nhận không ảnh hưởng chức năng cũ & tuân thủ `PROJECT-RULES.md`).
+```
+
+---
+
+### 3. Mẫu Prompt Chuyên biệt: Sửa / Thêm Tính năng Giao diện Web (`client/`)
+- **Model chọn trên UI**: `Gemini 4 Argon (Medium)` *(hoặc `Gemini 4 Neon (High)` nếu chỉ sửa giao diện/nhãn nhỏ)*
+
+```text
+Hãy kích hoạt skill `gksk-step-runner` và `modern-web-guidance`, đọc `AGENTS.md`, `docs/PROJECT-RULES.md` và `docs/ARCHITECTURE.md` (§4, §7, §8).
+
+Tôi muốn chỉnh sửa / bổ sung trên giao diện Web (`client/`) nội dung sau:
+"""
+[MÔ TẢ YÊU CẦU GIAO DIỆN CẦN THÊM / SỬA Ở ĐÂY]
+"""
+
+Hãy thực hiện theo đúng quy chuẩn dự án:
+1. Chỉ chỉnh sửa các component/page liên quan yêu cầu; giữ nguyên các luồng đang chạy ổn định (Đăng nhập, `EnvBanner`, Import Excel ghi đè thông minh, 4 tab Danh sách & Đối soát, Xuất XML/ZIP/Excel đối soát, Đẩy cổng hàng loạt và Drawer chi tiết 3 tab).
+2. Đảm bảo tuyệt đối không hiển thị 4 trường nhạy cảm (`NONGDOCON`, `MATUY`, `LYDO`, `TINHTRANGBENH`) trên bảng danh sách ngoài Drawer chi tiết, không dùng `dangerouslySetInnerHTML`, và mọi request ghi đều đi qua `client/src/api/*` có gắn `X-Requested-With: gksk`.
+3. Cập nhật hoặc viết thêm component test (Vitest + Testing Library) cho thay đổi này và chạy `npm run lint && npm run typecheck && npm test && npm run build` xanh 100%.
+4. Khởi chạy `npm run dev:mock`, dùng Browser Subagent mở trình duyệt kiểm tra thực tế giao diện vừa sửa (xác nhận 0 lỗi console, không lộ token CSYT trong tab Network) và **chụp ảnh màn hình trước/sau khi thao tác** lưu vào `docs/evidence/CR-ui/`.
+5. Cập nhật `CHANGELOG.md` và gửi báo cáo theo đúng **Mẫu Báo cáo bàn giao 5 mục bắt buộc** kèm ảnh chụp màn hình thực tế.
+```
+
+---
+
+### 4. Mẫu Prompt Chuyên biệt: Sửa / Thêm Luật Dữ liệu, Excel, XML hoặc DB MSSQL (`shared` / `server`)
+- **Model chọn trên UI**: `Gemini 4 Argon (High)`
+
+```text
+Hãy kích hoạt skill `gksk-step-runner` và `gksk-protocol-guard`, đọc `AGENTS.md`, `docs/PROJECT-RULES.md`, `docs/DATA-SPEC.md`, `docs/API-CONTRACT.md` và `docs/ARCHITECTURE.md` (§5, §6).
+
+Tôi muốn điều chỉnh / bổ sung ở tầng Nghiệp vụ / Backend (`packages/shared` hoặc `server/`) nội dung sau:
+"""
+[MÔ TẢ YÊU CẦU BACKEND / EXCEL / XML / DB CẦN THÊM HOẶC SỬA Ở ĐÂY]
+"""
+
+Hãy thực hiện cẩn trọng theo đúng quy tắc bảo vệ hệ thống:
+1. Đối chiếu yêu cầu với `docs/DATA-SPEC.md` và `docs/API-CONTRACT.md`:
+   - Đảm bảo không làm sai lệch cấu trúc 25 thẻ XML theo thứ tự BHXH, công thức `msg_id` giờ Việt Nam (`UTC+7`), thứ tự 8 khóa `header`, chữ ký Golden Vector, hay chính sách retry giữ nguyên `msg_id`.
+   - Nếu có thay đổi truy vấn hoặc bảng DB: bắt buộc đồng bộ cả `InMemoryRepositories` và `MssqlRepositories`, 100% bảng có tiền tố `gksk_*`, 100% truy vấn MSSQL dùng `.input()` tham số hóa, tuyệt đối cấm `DROP TABLE` / `TRUNCATE`, và `npm test` mặc định vẫn chỉ chạy trên `InMemoryRepositories`.
+2. Cập nhật tài liệu đặc tả trong `docs/` nếu hành vi thay đổi.
+3. Viết thêm unit test / integration test (bao gồm cả ca chuẩn và ca sát biên) và chạy `npm run lint && npm run typecheck && npm test` xanh 100% trên toàn bộ monorepo.
+4. Chạy script kiểm chứng sinh file đầu ra thực tế (`.xml`, `.xlsx`, `.zip`, `.json` hoặc biên bản `.md`) lưu vào `docs/evidence/CR-backend/`.
+5. Cập nhật `CHANGELOG.md` và báo cáo kết quả theo đúng **Mẫu Báo cáo bàn giao 5 mục bắt buộc**.
+```
+
+---
+
+### 5. Mẫu Prompt "Khảo sát & Lập kế hoạch trước khi sửa" (Dùng cho thay đổi lớn hoặc chưa rõ hướng)
+- **Model chọn trên UI**: `Gemini 4 Argon (High)`
+
+```text
+Hãy đọc `AGENTS.md`, `project_context.md`, `docs/PROJECT-RULES.md`, `docs/ARCHITECTURE.md`, `docs/DATA-SPEC.md` và `docs/API-CONTRACT.md`.
+
+Tôi đang dự định thêm / sửa chức năng lớn sau đây:
+"""
+[MÔ TẢ Ý TƯỞNG HOẶC THAY ĐỔI LỚN BẠN MUỐN LÀM]
+"""
+
+**KHOAN VIẾT CODE.** Trong lượt này, hãy giúp tôi:
+1. Khảo sát mã nguồn hiện tại và liệt kê chính xác các file/module sẽ bị ảnh hưởng.
+2. Chỉ ra các rủi ro tiềm ẩn đối với các chức năng đang hoạt động, hợp đồng API Sở Y tế Đồng Nai, cấu trúc 25 thẻ XML BHXH và CSDL MSSQL (`gksk_*`).
+3. Đề xuất phương án thiết kế chi tiết (chia thành từng bước nhỏ kèm cách kiểm thử và bằng chứng nghiệm thu) hoặc hỏi lại tôi các điểm cần chốt quyết định.
+Chỉ khi nào tôi xác nhận đồng ý với kế hoạch thì mới bắt đầu sửa tài liệu và viết code.
+```
+

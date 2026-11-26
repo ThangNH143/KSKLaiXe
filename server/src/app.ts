@@ -59,6 +59,7 @@ export interface AuthAppOptions {
   loginUser: string;
   loginPasswordHash: string;
   sessionSecret: string;
+  allowInsecureCookie?: boolean;
 }
 
 export interface CreateAppOptions {
@@ -85,10 +86,24 @@ export interface CreateAppOptions {
   serveClientDist?: boolean;
   /** Đường dẫn tùy chỉnh tới thư mục `client/dist` (mặc định tự dò tương đối theo monorepo). */
   clientDistDir?: string;
+  /** Tiền tố Subpath tùy chọn khi chạy dưới thư mục con của IIS (vd: `"/KSKLaiXe"`). */
+  basePath?: string;
 }
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Chuẩn hóa tiền tố subpath (ví dụ `"KSKLaiXe/"` -> `"/KSKLaiXe"`, `"/"` hoặc `""` -> `""`).
+ */
+export function normalizeSubpathPrefix(rawPath?: string): string {
+  const trimmed = (rawPath ?? '').trim();
+  if (!trimmed || trimmed === '/') {
+    return '';
+  }
+  const withLeading = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return withLeading.replace(/\/+$/, '');
+}
 
 export function resolveClientDistDir(customDir?: string): string | null {
   const candidates = [
@@ -185,6 +200,15 @@ export function createApp(options?: CreateAppOptions): Express {
 
   const loginPasswordHash = rawLoginPasswordHash ?? getDefaultTestPasswordHash();
   const sessionSecret = rawSessionSecret ?? DEFAULT_TEST_SESSION_SECRET;
+  const allowInsecureCookie =
+    options?.auth?.allowInsecureCookie ??
+    cfg?.auth.allowInsecureCookie ??
+    (process.env.ALLOW_INSECURE_COOKIE === 'true' ||
+      process.env.ALLOW_INSECURE_COOKIE === '1');
+
+  const subpathPrefix = normalizeSubpathPrefix(
+    options?.basePath ?? process.env.VITE_BASE_PATH,
+  );
 
   const publicConfig: PublicConfig = cfg
     ? {
@@ -205,6 +229,7 @@ export function createApp(options?: CreateAppOptions): Express {
     options?.sessionStore ??
     createSessionStore({
       sessionSecret,
+      allowInsecureCookie,
       ...(options?.now !== undefined ? { now: options.now } : {}),
     });
 
@@ -273,20 +298,16 @@ export function createApp(options?: CreateAppOptions): Express {
     });
 
   // Các route công khai / xác thực (miễn requireAuth)
-  app.use('/api', healthRouter);
-  app.use('/api', createConfigRouter(publicConfig));
-  app.use(
-    '/api',
-    createAuthRouter({
-      appEnv,
-      loginUser,
-      loginPasswordHash,
-      sessionStore,
-      rateLimiter,
-      csrfMiddleware,
-      logger: log,
-    }),
-  );
+  const configRouter = createConfigRouter(publicConfig);
+  const authRouter = createAuthRouter({
+    appEnv,
+    loginUser,
+    loginPasswordHash,
+    sessionStore,
+    rateLimiter,
+    csrfMiddleware,
+    logger: log,
+  });
 
   // Toàn bộ các route nghiệp vụ bắt buộc phải đăng nhập (401) và có CSRF header khi ghi (403)
   const protectedApi = Router();
@@ -295,23 +316,43 @@ export function createApp(options?: CreateAppOptions): Express {
   protectedApi.use(createImportRouter({ importService }));
   protectedApi.use(createCertificatesRouter({ certificateService }));
   protectedApi.use(createSendRouter({ sendService, jobService }));
-  app.use('/api', protectedApi);
+
+  const apiMountPoints = subpathPrefix
+    ? ['/api', `${subpathPrefix}/api`]
+    : ['/api'];
+  for (const apiMount of apiMountPoints) {
+    app.use(apiMount, healthRouter);
+    app.use(apiMount, configRouter);
+    app.use(apiMount, authRouter);
+    app.use(apiMount, protectedApi);
+  }
 
   // Chế độ production: phục vụ luôn giao diện tĩnh React (`client/dist`) trên cùng 1 tiến trình & 1 cổng
+  // Hỗ trợ cả truy cập ở gốc `/` lẫn dưới Subpath IIS (vd `/KSKLaiXe`)
   const shouldServeClient =
     options?.serveClientDist ?? process.env.NODE_ENV === 'production';
   if (shouldServeClient) {
     const clientDistDir = resolveClientDistDir(options?.clientDistDir);
     if (clientDistDir) {
       const indexHtmlPath = path.join(clientDistDir, 'index.html');
-      app.use(
-        express.static(clientDistDir, {
-          index: false,
-          maxAge: '1d',
-        }),
-      );
+      const staticOptions = {
+        index: false,
+        redirect: false,
+        maxAge: '1d',
+      };
+      app.use(express.static(clientDistDir, staticOptions));
+      if (subpathPrefix) {
+        app.use(subpathPrefix, express.static(clientDistDir, staticOptions));
+      }
+
       app.get('*', (req, res, next) => {
-        if (req.path === '/api' || req.path.startsWith('/api/')) {
+        if (
+          req.path === '/api' ||
+          req.path.startsWith('/api/') ||
+          (subpathPrefix !== '' &&
+            (req.path === `${subpathPrefix}/api` ||
+              req.path.startsWith(`${subpathPrefix}/api/`)))
+        ) {
           next();
           return;
         }

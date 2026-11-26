@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  normalizeBasePathPrefix,
+  resolveApiUrl,
+  resolveRouterBasename,
+} from './http';
+import {
   ApiError,
   apiRequest,
   CSRF_HEADER_NAME,
@@ -116,5 +121,24 @@ describe('client/src/api/http.ts — tầng gọi API chuẩn hóa', () => {
       expect(apiErr.code).toBe('TOO_MANY_LOGIN_ATTEMPTS');
       expect(apiErr.retryAfterSeconds).toBe(900);
     }
+  });
+
+  it('chuẩn hóa VITE_BASE_PATH cho Subpath IIS (/KSKLaiXe) trên resolveApiUrl và resolveRouterBasename', () => {
+    expect(normalizeBasePathPrefix('')).toBe('');
+    expect(normalizeBasePathPrefix('/')).toBe('');
+    expect(normalizeBasePathPrefix('KSKLaiXe/')).toBe('/KSKLaiXe');
+    expect(normalizeBasePathPrefix('/KSKLaiXe///')).toBe('/KSKLaiXe');
+
+    expect(resolveRouterBasename('/')).toBeUndefined();
+    expect(resolveRouterBasename('/KSKLaiXe/')).toBe('/KSKLaiXe');
+
+    expect(resolveApiUrl('/api/health', '/')).toBe('/api/health');
+    expect(resolveApiUrl('/api/health', '/KSKLaiXe')).toBe('/KSKLaiXe/api/health');
+    expect(resolveApiUrl('/api/certificates?tab=all', 'KSKLaiXe/')).toBe(
+      '/KSKLaiXe/api/certificates?tab=all',
+    );
+    expect(resolveApiUrl('/KSKLaiXe/api/health', '/KSKLaiXe')).toBe(
+      '/KSKLaiXe/api/health',
+    );
   });
 });

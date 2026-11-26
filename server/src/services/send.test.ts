@@ -562,7 +562,7 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
         SO: so,
         HOTEN: `TEST NGUYEN BATCH ${i}`,
         SOCMND_PASSPORT: `TESTGKSK${String(i).padStart(2, '0')}`,
-        NONGDOCON: '0.35',
+        NONGDOCON: '0.3579',
         MATUY: '1',
         LYDO: `Ly do nhay cam ${i}`,
         TINHTRANGBENH: `Tinh trang benh nhay cam ${i}`,
@@ -718,7 +718,7 @@ describe('server/src/services/{sendService,jobService}.ts & routes/send.ts — S
     expect(rawLogs).not.toContain('TESTGKSK');
     expect(rawLogs).not.toContain('Ly do nhay cam');
     expect(rawLogs).not.toContain('Tinh trang benh nhay cam');
-    expect(rawLogs).not.toContain('0.35');
+    expect(rawLogs).not.toContain('0.3579');
     expect(rawLogs).not.toContain('Bearer ');
     expect(rawLogs).not.toContain('PHJvb3Q');
 

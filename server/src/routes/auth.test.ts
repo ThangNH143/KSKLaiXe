@@ -294,6 +294,29 @@ describe('S12 — Xác thực ứng dụng (auth, requireAuth, CSRF, rateLimit, 
     expect(prodCookieHeader).toContain('HttpOnly');
     expect(prodCookieHeader).toContain('SameSite=Lax');
     expect(prodCookieHeader).toContain('Secure');
+
+    // Khi APP_ENV=production nhưng bật allowInsecureCookie=true cho mạng LAN HTTP nội bộ -> không gắn cờ Secure khi gọi qua HTTP
+    const lanProdApp = createApp({
+      appEnv: 'production',
+      baseUrl: 'https://api.dongnai.gov.vn',
+      auth: {
+        loginUser: 'admin_lan',
+        loginPasswordHash: customHash,
+        sessionSecret: 'lan-prod-secret-for-insecure-cookie-test-32chars',
+        allowInsecureCookie: true,
+      },
+    });
+    const lanLogin = await request(lanProdApp)
+      .post('/api/auth/login')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ username: 'admin_lan', password: customPassword });
+    expect(lanLogin.status).toBe(200);
+    const lanCookieHeader = Array.isArray(lanLogin.headers['set-cookie'])
+      ? lanLogin.headers['set-cookie'][0]
+      : String(lanLogin.headers['set-cookie'] ?? '');
+    expect(lanCookieHeader).toContain('HttpOnly');
+    expect(lanCookieHeader).toContain('SameSite=Lax');
+    expect(lanCookieHeader).not.toContain('; Secure');
   });
 
   it('4. Giới hạn 10 lần đăng nhập sai / 15 phút / IP -> lần thứ 11 trả 429 kèm Retry-After; hết 15 phút được mở khóa', async () => {

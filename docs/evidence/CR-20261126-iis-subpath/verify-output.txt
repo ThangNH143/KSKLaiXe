@@ -1,0 +1,23 @@
+[2026-11-26T07:37:02.006Z] === BẮT ĐẦU KIỂM CHỨNG CR-20261126-iis-subpath (Phương án 3: Subpath IIS /KSKLaiXe + ALLOW_INSECURE_COOKIE=true) ===
+[2026-11-26T07:37:02.007Z] Bước 1: Chạy npm run build với VITE_BASE_PATH=/KSKLaiXe ...
+[2026-11-26T07:37:10.812Z] PASS: client/dist/index.html tồn tại sau khi build
+[2026-11-26T07:37:10.812Z] PASS: client/dist/index.html tham chiếu tài nguyên tĩnh với tiền tố "/KSKLaiXe/assets/"
+[2026-11-26T07:37:10.900Z] Bước 2: Khởi chạy server 1 cổng tại http://127.0.0.1:49346/KSKLaiXe (APP_ENV=production, ALLOW_INSECURE_COOKIE=true) ...
+[2026-11-26T07:37:12.509Z] PASS: GET /KSKLaiXe/api/health trả HTTP 200 {"ok":true}
+[2026-11-26T07:37:12.517Z] PASS: GET /api/health (khi IIS strip subpath) cũng trả HTTP 200
+[2026-11-26T07:37:12.517Z] Bước 3: Kiểm tra POST /KSKLaiXe/api/auth/login qua HTTP LAN không gắn cờ Secure khi ALLOW_INSECURE_COOKIE=true ...
+[2026-11-26T07:37:12.634Z] PASS: POST /KSKLaiXe/api/auth/login trả HTTP 200
+[2026-11-26T07:37:12.635Z] PASS: Header Set-Cookie có chứa gksk_session
+[2026-11-26T07:37:12.635Z] PASS: Header Set-Cookie có cờ HttpOnly
+[2026-11-26T07:37:12.635Z] PASS: Header Set-Cookie KHÔNG gắn cờ Secure khi ALLOW_INSECURE_COOKIE=true trên HTTP
+[2026-11-26T07:37:12.635Z] Bước 4: Mở trình duyệt Playwright kiểm tra giao diện tại /KSKLaiXe/login, đăng nhập và chuyển trang ...
+[2026-11-26T07:37:14.062Z] PASS: Trình duyệt mở đúng URL /KSKLaiXe/login
+[2026-11-26T07:37:14.145Z] Đã chụp ảnh màn hình đăng nhập Subpath: G:\KSKLaiXe\docs\evidence\CR-20261126-iis-subpath\01-subpath-login-http-prod.png
+[2026-11-26T07:37:14.294Z] PASS: Đăng nhập qua HTTP thành công, giữ phiên cookie và điều hướng về http://127.0.0.1:49346/KSKLaiXe
+[2026-11-26T07:37:14.308Z] PASS: Banner đỏ cảnh báo MÔI TRƯỜNG SẢN XUẤT (PRODUCTION) vẫn hiển thị đầy đủ
+[2026-11-26T07:37:14.541Z] Đã chụp ảnh màn hình Danh sách đối soát dưới Subpath /KSKLaiXe: G:\KSKLaiXe\docs\evidence\CR-20261126-iis-subpath\02-subpath-reconcile-authenticated.png
+[2026-11-26T07:37:15.090Z] PASS: Điều hướng trực tiếp tới SPA route /KSKLaiXe/import thành công
+[2026-11-26T07:37:15.159Z] Đã chụp ảnh màn hình Import Excel dưới Subpath /KSKLaiXe/import: G:\KSKLaiXe\docs\evidence\CR-20261126-iis-subpath\03-subpath-import-page.png
+[2026-11-26T07:37:15.159Z] PASS: Trình duyệt có 0 lỗi console/pageerror (ghi nhận: 0)
+[2026-11-26T07:37:15.652Z] Bước 5: Khôi phục bản build mặc định (VITE_BASE_PATH="") cho client/dist ...
+[2026-11-26T07:37:25.435Z] === HOÀN TẤT KIỂM CHỨNG CR-20261126-iis-subpath: 100% PASS ===

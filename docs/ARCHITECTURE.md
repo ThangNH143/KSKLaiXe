@@ -192,7 +192,7 @@ Các bước trong `sendCertificate(id)`:
 | Chủ đề | Quy định |
 |---|---|
 | Bí mật | `.env` chỉ ở server; `/api/config` không trả bí mật hay thông tin DB; client không có token CSYT |
-| Phiên ứng dụng | cookie `httpOnly`, `sameSite=lax`, `secure` khi `APP_ENV=production` hoặc sau HTTPS; hết hạn 8 giờ; mật khẩu so bằng `bcrypt` |
+| Phiên ứng dụng | cookie `httpOnly`, `sameSite=lax`, `secure` khi `APP_ENV=production` (trừ khi bật `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ) hoặc sau HTTPS; hết hạn 8 giờ; mật khẩu so bằng `bcrypt` |
 | Chống thử mật khẩu | giới hạn 10 lần đăng nhập sai / 15 phút / IP |
 | CSRF | API chỉ nhận `application/json` hoặc `multipart` kèm header tùy biến `X-Requested-With: gksk` do client gắn; từ chối thiếu header với các method ghi |
 | Upload | `multer` bộ nhớ, ≤ 5 MB, chỉ `.xlsx` (kiểm magic bytes `PK`), không ghi đĩa |

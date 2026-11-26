@@ -1,5 +1,58 @@
+/// <reference types="vite/client" />
+
 export const CSRF_HEADER_NAME = 'X-Requested-With';
 export const CSRF_HEADER_VALUE = 'gksk';
+
+function getViteEnvBasePath(): string | undefined {
+  return import.meta.env.VITE_BASE_PATH || import.meta.env.BASE_URL;
+}
+
+/**
+ * Chuẩn hóa tiền tố subpath từ `VITE_BASE_PATH` / `BASE_URL` (ví dụ `"/KSKLaiXe/"` -> `"/KSKLaiXe"`, `"/"` -> `""`).
+ */
+export function normalizeBasePathPrefix(rawBase?: string): string {
+  const trimmed = (rawBase ?? '').trim();
+  if (!trimmed || trimmed === '/') {
+    return '';
+  }
+  const withLeading = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return withLeading.replace(/\/+$/, '');
+}
+
+/**
+ * Trả về `basename` cho `<BrowserRouter>` của React Router:
+ * - Khi chạy ở gốc `/`: trả về `undefined`
+ * - Khi chạy dưới Subpath IIS (vd `VITE_BASE_PATH=/KSKLaiXe`): trả về `"/KSKLaiXe"`
+ */
+export function resolveRouterBasename(rawBase?: string): string | undefined {
+  const envBase = rawBase ?? getViteEnvBasePath();
+  const prefix = normalizeBasePathPrefix(envBase);
+  return prefix.length > 0 ? prefix : undefined;
+}
+
+/**
+ * Gắn tiền tố Subpath (nếu có) vào đường dẫn `/api/...` để hỗ trợ chạy dưới thư mục con của IIS
+ * (ví dụ `VITE_BASE_PATH=/KSKLaiXe` + `"/api/health"` -> `"/KSKLaiXe/api/health"`).
+ * Khi chạy mặc định ở gốc `/`, giữ nguyên `"/api/health"`.
+ */
+export function resolveApiUrl(apiPath: string, rawBase?: string): string {
+  if (/^https?:\/\//i.test(apiPath)) {
+    return apiPath;
+  }
+  const envBase = rawBase ?? getViteEnvBasePath();
+  const prefix = normalizeBasePathPrefix(envBase);
+  const normalizedPath = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+  if (!prefix) {
+    return normalizedPath;
+  }
+  if (
+    normalizedPath === prefix ||
+    normalizedPath.startsWith(`${prefix}/`)
+  ) {
+    return normalizedPath;
+  }
+  return `${prefix}${normalizedPath}`;
+}
 
 export interface StructuredApiErrorBody {
   error?: {
@@ -140,9 +193,10 @@ export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const targetUrl = resolveApiUrl(path);
   let response: Response;
   try {
-    response = await fetch(path, buildFetchInit(options));
+    response = await fetch(targetUrl, buildFetchInit(options));
   } catch {
     throw new ApiError(
       0,
@@ -209,9 +263,10 @@ export async function apiDownload(
   fallbackFileName: string,
   options: ApiRequestOptions = {},
 ): Promise<FileDownloadResult> {
+  const targetUrl = resolveApiUrl(path);
   let response: Response;
   try {
-    response = await fetch(path, buildFetchInit(options));
+    response = await fetch(targetUrl, buildFetchInit(options));
   } catch {
     throw new ApiError(
       0,

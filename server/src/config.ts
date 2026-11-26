@@ -32,6 +32,7 @@ export interface AppConfig {
     loginUser: string;
     loginPasswordHash: string;
     sessionSecret: string;
+    allowInsecureCookie?: boolean;
   };
 }
 
@@ -174,6 +175,7 @@ const envSchema = z
     APP_LOGIN_USER: requiredString('APP_LOGIN_USER'),
     APP_LOGIN_PASSWORD_HASH: requiredString('APP_LOGIN_PASSWORD_HASH'),
     SESSION_SECRET: requiredString('SESSION_SECRET', 16),
+    ALLOW_INSECURE_COOKIE: optionalBoolean('ALLOW_INSECURE_COOKIE', false),
   })
   .superRefine((data, ctx) => {
     let parsedUrl: URL | null = null;
@@ -253,6 +255,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       loginUser: d.APP_LOGIN_USER,
       loginPasswordHash: d.APP_LOGIN_PASSWORD_HASH,
       sessionSecret: d.SESSION_SECRET,
+      allowInsecureCookie: d.ALLOW_INSECURE_COOKIE,
     },
   };
 }

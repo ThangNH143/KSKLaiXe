@@ -62,11 +62,10 @@ BEGIN
 END;
 GO
 
--- Quyền khởi tạo 4 bảng gksk_* lần đầu (migration 001_init.sql) và đọc/ghi dữ liệu:
+-- Quyền khởi tạo 4 bảng gksk_* lần đầu (migration 001_init.sql, gồm cả FOREIGN KEY) và đọc/ghi dữ liệu:
 ALTER ROLE [db_datareader] ADD MEMBER [gksk_app_user];
 ALTER ROLE [db_datawriter] ADD MEMBER [gksk_app_user];
-GRANT CREATE TABLE TO [gksk_app_user];
-GRANT ALTER ON SCHEMA::[dbo] TO [gksk_app_user];
+ALTER ROLE [db_ddladmin] ADD MEMBER [gksk_app_user];
 GO
 ```
 
@@ -154,6 +153,11 @@ GKSK_HTTP_TIMEOUT_MS=30000
 APP_LOGIN_USER=admin
 APP_LOGIN_PASSWORD_HASH=$2b$10$...DAN_CHUOI_BCRYPT_VAO_DAY...
 SESSION_SECRET=...DAN_CHUOI_64_KY_TU_NGU_NHIEN_VAO_DAY...
+# Đặt true nếu chạy mạng LAN nội bộ qua HTTP (vd http://192.168.1.140/KSKLaiXe), đặt false nếu có HTTPS
+ALLOW_INSECURE_COOKIE=false
+
+# Đặt /KSKLaiXe trước khi chạy `npm run build` nếu chạy dưới Subpath IIS (http://<ip>/KSKLaiXe); để trống nếu chạy ở "/"
+VITE_BASE_PATH=
 ```
 
 > **Bảo vệ file `.env`**: Cấp quyền NTFS chỉ cho tài khoản chạy dịch vụ Windows (SYSTEM / Service Account) và Administrators được đọc file `.env`. Không bao giờ chia sẻ hoặc commit `.env` lên git.
@@ -257,12 +261,62 @@ gksk.noibo.benhvien.local {
 }
 ```
 
-### Phương án 2 — IIS (Application Request Routing + URL Rewrite)
+### Phương án 2 — IIS (Application Request Routing + URL Rewrite ở đường dẫn gốc `/`)
 
 1. Cài **URL Rewrite 2.1** và **Application Request Routing (ARR) 3.0** trên IIS.
 2. Tạo Website mới trên IIS gán binding **HTTPS (port 443)** với chứng chỉ SSL của đơn vị.
 3. Bật Proxy trong ARR (`Server Proxy Settings` → tick **Enable proxy**).
 4. Tạo rule **Reverse Proxy** chuyển toàn bộ request tới `http://127.0.0.1:3001/{R:1}` và giữ nguyên header `X-Forwarded-Proto: https`.
+
+### Phương án 3 — Chạy dưới Subpath trên IIS có sẵn (`http://192.168.1.140/KSKLaiXe` — Mạng LAN nội bộ không cần DNS / không cần cài SSL)
+
+Khi máy chủ Windows Server đang chạy sẵn IIS ở cổng 80 (`Default Web Site`) phục vụ nhiều dự án `.NET` và `Node.js` khác nhau theo dạng `http://<ip-server>/<TenDuAn>`:
+
+1. **Cấu hình `.env` tại `C:\Apps\GKSKLaiXe\.env`**:
+   ```env
+   NODE_ENV=production
+   APP_ENV=production
+   PORT=3001
+   ALLOW_INSECURE_COOKIE=true
+   VITE_BASE_PATH=/KSKLaiXe
+   ```
+2. **Build bản Frontend nhận Subpath `/KSKLaiXe`**:
+   ```powershell
+   cd C:\Apps\GKSKLaiXe
+   npm run build
+   nssm restart GKSKLaiXe
+   ```
+   *(Lưu ý: Server Express đã hỗ trợ phục vụ song song cả ở `/` lẫn `/KSKLaiXe` và cả `/api/*` lẫn `/KSKLaiXe/api/*`, nên dù IIS rewrite có cắt hay giữ tiền tố `/KSKLaiXe` đều hoạt động 100%.)*
+3. **Cấu hình IIS dưới `Default Web Site`**:
+   - Tạo một thư mục trống dành riêng làm điểm gắn IIS (tuyệt đối không trỏ vào `C:\Apps\GKSKLaiXe`):
+     ```powershell
+     New-Item -ItemType Directory -Force "C:\inetpub\proxies\KSKLaiXe"
+     ```
+   - Mở **IIS Manager** → chuột phải vào **Default Web Site** → **Add Application...** (hoặc **Add Virtual Directory...**):
+     - **Alias**: `KSKLaiXe`
+     - **Physical path**: `C:\inetpub\proxies\KSKLaiXe`
+   - Tạo file `C:\inetpub\proxies\KSKLaiXe\web.config` với nội dung:
+     ```xml
+     <?xml version="1.0" encoding="UTF-8"?>
+     <configuration>
+       <system.webServer>
+         <security>
+           <requestFiltering>
+             <requestLimits maxAllowedContentLength="10485760" />
+           </requestFiltering>
+         </security>
+         <rewrite>
+           <rules>
+             <rule name="ReverseProxyGKSKLaiXeSubpath" stopProcessing="true">
+               <match url="(.*)" />
+               <action type="Rewrite" url="http://127.0.0.1:3001/{R:1}" />
+             </rule>
+           </rules>
+         </rewrite>
+       </system.webServer>
+     </configuration>
+     ```
+   - Từ bất kỳ máy trạm nào trong mạng LAN, mở trình duyệt truy cập: **`http://192.168.1.140/KSKLaiXe`** là sử dụng được ngay!
 
 ---
 

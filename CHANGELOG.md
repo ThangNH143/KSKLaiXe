@@ -12,6 +12,8 @@
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-26 | `docs/DEPLOY.md`, `docs/ARCHITECTURE.md`, `.env.example` | Bổ sung **Phương án 3 — Chạy dưới Subpath trên IIS có sẵn (`http://192.168.1.140/KSKLaiXe`)** với cấu hình `VITE_BASE_PATH=/KSKLaiXe`, biến `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ và cập nhật phân quyền SQL thêm `db_ddladmin` cho `gksk_app_user` | Hỗ trợ triển khai thực tế dưới Subpath của Default Web Site IIS trong mạng LAN nội bộ (`CR-20261126-iis-subpath`) |
+| 2026-11-26 | `docs/STEP-PROMPTS.md` | Bổ sung **PHẦN 2 — Bộ Prompt Thêm / Sửa Chức năng, Sửa Lỗi & Bảo trì Code (Sau v1.0.0)** kèm bảng chọn Model Gemini 4 (`Neon High`, `Argon Medium`, `Argon High`) và Quy trình Thay đổi An toàn 6 bước | Giúp người dùng copy-paste khi cần thêm/sửa tính năng hoặc sửa lỗi mà vẫn khóa chặt các quy tắc bảo vệ code hiện có và `PROJECT-RULES.md` |
 | 2026-11-26 | `docs/DEPLOY.md`, `docs/USER-GUIDE.md` | Bổ sung tài liệu triển khai Windows Server + MSSQL (`gksk_*`, NSSM/PM2, Reverse Proxy HTTPS, Backup/Logrotate, Đổi khóa RSA/Mật khẩu) và tài liệu hướng dẫn sử dụng tiếng Việt nhúng 15 ảnh chụp màn hình thực tế từ `docs/evidence/` | Bàn giao vận hành phiên bản `1.0.0` (S19) |
 | 2026-11-25 | `docs/OPEN-QUESTIONS.md`, `docs/DATA-SPEC.md`, `docs/TEST-PLAN.md`, `project_context.md` | Chốt hoàn toàn các câu hỏi mở còn lại sau kiểm thử S18: **Q2** (thẻ tùy chọn rỗng xuất `<TAG></TAG>`), **Q5** (v1 gửi XML chưa ký, ký số để dành v2), **Q6** (hỗ trợ `GKSK_PRIVATE_KEY_PATH` ký RSA-SHA256 hoặc `CHUA-KY-...`), **Q8** (`sender_id = GKSK_FACILITY_ID`), **Q11** (`NGAYKETLUAN` = Ngày kết luận / ngày cấp giấy), **Q13** (độ dài tối đa đếm theo ký tự Unicode NFC, xác nhận bằng chuỗi 30 ký tự tiếng Việt có dấu / 38 bytes UTF-8). Tick hoàn tất 14/14 bước trong `TEST-PLAN.md §5` | Nghiệm thu bước S18 |
 | 2026-11-23 | `docs/STEP-PROMPTS.md` | Tạo bộ 20 prompt copy-paste cho từng bước từ `S0` đến `S19` kèm khuyến nghị Model Gemini 4 (`Neon Medium`, `Neon High`, `Argon Medium`, `Argon High` — không dùng Carbon) | Để người dùng copy-paste trực tiếp vào từng phiên chat theo đúng chuẩn quy trình |
@@ -40,6 +42,74 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [CR-20261126-predeploy-ts6-rootdir] Sửa lỗi `rootDir` trên `server/tsconfig.json` (TypeScript 6 / VS Code) & Rà soát toàn diện dự án trước khi Commit Deploy Production — 2026-11-26 — Antigravity
+### Đã làm
+- **Sửa lỗi `server/tsconfig.json` trên VS Code (TypeScript 6 diagnostic)**:
+  - Thêm `"rootDir": ".."` vào `compilerOptions` của `server/tsconfig.json` vì file này `include` cả `"src/**/*.ts"` và `"../tests/fixtures/**/*.ts"` (thư mục nguồn chung là `".."`). Việc khai báo tường minh `"rootDir": ".."` giúp VS Code (TypeScript 6 language service) hết báo lỗi đỏ tại dòng `"outDir": "dist"`.
+  - Giữ nguyên `"rootDir": "src"` trong `server/tsconfig.build.json` để lệnh build production (`npm run build`) vẫn xuất đúng `server/dist/index.js` (không bị lồng thư mục `server/dist/src/index.js`).
+- **Gia cố chống flaky test do trùng mili-giây đồng hồ thực trong `server/src/services/send.test.ts`**:
+  - Đổi giá trị kiểm thử rò rỉ PII `NONGDOCON` từ `'0.35'` sang `'0.3579'` trong ca test #6 của `server/src/services/send.test.ts` để tránh trường hợp chuỗi thời gian ISO của log (`"time":"...T...:10.359Z"`) ngẫu nhiên chứa chuỗi con `"0.35"`.
+- **Kiểm chứng toàn diện dự án trước khi Commit & Deploy**:
+  - Viết và chạy `scripts/verify-CR-20261126-predeploy-ts6-rootdir.mjs` kiểm tra toàn bộ `tsconfig*.json` của 4 workspaces, chạy `npm run lint`, `npm run typecheck`, xóa sạch `server/dist` rồi chạy `npm run build` xác nhận cấu trúc `server/dist/index.js` + `client/dist/index.html`, chạy toàn bộ 268/268 tests và kiểm tra an toàn `.gitignore`/`.env`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Cấu hình & Mã nguồn kiểm thử: `server/tsconfig.json`, `server/src/services/send.test.ts`, `CHANGELOG.md`.
+- Script kiểm chứng & Bằng chứng: `scripts/verify-CR-20261126-predeploy-ts6-rootdir.mjs`, `docs/evidence/CR-20261126-predeploy-ts6-rootdir/verify-output.txt`.
+
+### Bằng chứng bàn giao (`docs/evidence/CR-20261126-predeploy-ts6-rootdir/`)
+- `docs/evidence/CR-20261126-predeploy-ts6-rootdir/verify-output.txt`: biên bản kiểm chứng toàn diện `tsconfig`, `lint`, `typecheck`, `build`, `test` (268/268) và kiểm tra an toàn Git trước khi deploy.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd run build`: PASS (`server/dist/index.js` và `client/dist/index.html` đúng cấu trúc).
+- `npm.cmd test`: PASS — 22/22 test files, 268/268 tests (`shared`: 145, `server`: 92, `client`: 21, `mock-gksk-api`: 10).
+- `node scripts/verify-CR-20261126-predeploy-ts6-rootdir.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Hết 100% lỗi `rootDir` trên `server/tsconfig.json` trong VS Code Problems panel.
+- ✔ Cấu trúc build `server/dist/index.js` giữ nguyên 100%, tương thích hoàn toàn với `docs/DEPLOY.md`.
+- ✔ Toàn bộ `lint`, `typecheck`, `build`, `test` (268/268) xanh 100%, sẵn sàng commit git và đưa lên production.
+
+## [CR-20261126-iis-subpath] Hỗ trợ chạy dưới Subpath IIS (`/KSKLaiXe`) và `ALLOW_INSECURE_COOKIE` cho mạng LAN HTTP — 2026-11-26 — Antigravity
+### Đã làm
+- **Tài liệu đi trước (`PROJECT-RULES.md §1.2`)**:
+  - Cập nhật `docs/DEPLOY.md` bổ sung **Phương án 3 — Chạy dưới Subpath trên IIS có sẵn (`http://192.168.1.140/KSKLaiXe`)** kèm mẫu `.env` và `C:\inetpub\wwwroot\KSKLaiXe\web.config`, đồng thời bổ sung quyền `db_ddladmin` cho tài khoản SQL `gksk_app_user` để chạy migration tạo khóa ngoại `fk_gksk_*` không bị lỗi quyền.
+  - Cập nhật `docs/ARCHITECTURE.md` (§7) và `.env.example` giải thích rõ `VITE_BASE_PATH` và `ALLOW_INSECURE_COOKIE=true` khi chạy HTTP nội bộ với `APP_ENV=production`.
+- **Hỗ trợ `VITE_BASE_PATH` (Frontend + Backend)**:
+  - Cập nhật `client/vite.config.ts` hàm `normalizeViteBase()` tự động nạp `VITE_BASE_PATH` từ biến môi trường hoặc `.env` gốc (ví dụ `VITE_BASE_PATH=/KSKLaiXe` -> `base: "/KSKLaiXe/"`).
+  - Cập nhật `client/src/api/http.ts` (`normalizeBasePathPrefix`, `resolveRouterBasename`, `resolveApiUrl`) và `client/src/main.tsx` (`<BrowserRouter basename={...}>`) để tự động gắn tiền tố subpath cho cả React Router lẫn mọi lệnh gọi `/api/...`.
+  - Cập nhật `server/src/app.ts` (`normalizeSubpathPrefix`, `basePath`) để mount song song cả `/api` và `${subpathPrefix}/api`, cũng như phục vụ tĩnh `client/dist` ở cả `/` và `${subpathPrefix}` (với `redirect: false` để truy cập `/KSKLaiXe` không bị 301). Nhờ vậy ứng dụng chạy ổn định dù IIS Reverse Proxy giữ nguyên hay cắt bỏ tiền tố `/KSKLaiXe`.
+- **Hỗ trợ `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ**:
+  - Cập nhật `server/src/config.ts` đọc biến `ALLOW_INSECURE_COOKIE` (`boolean`, mặc định `false`).
+  - Cập nhật `server/src/middleware/requireAuth.ts` và `server/src/app.ts`: khi `APP_ENV=production` và `ALLOW_INSECURE_COOKIE=true` trên kết nối HTTP nội bộ, cookie phiên `gksk_sid` vẫn giữ `HttpOnly; SameSite=Lax` nhưng bỏ cờ `Secure` để trình duyệt gửi được cookie qua `http://192.168.1.140/KSKLaiXe`, trong khi vẫn giữ nguyên mọi hàng rào bảo vệ `APP_ENV=production` (banner đỏ, hộp xác nhận đẩy cổng thật, bắt buộc `https://` cho `GKSK_BASE_URL`).
+- **Kiểm thử tự động & Bằng chứng thực tế**:
+  - Bổ sung unit/integration test tại `client/src/api/http.test.ts`, `server/src/config.test.ts`, `server/src/routes/auth.test.ts`, `server/src/app.test.ts`.
+  - Viết và chạy `scripts/verify-CR-20261126-iis-subpath.mjs` kiểm chứng bản build `VITE_BASE_PATH=/KSKLaiXe` + `ALLOW_INSECURE_COOKIE=true` bằng trình duyệt Playwright thật và lưu bằng chứng vào `docs/evidence/CR-20261126-iis-subpath/`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Tài liệu: `.env.example`, `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `CHANGELOG.md`.
+- Mã nguồn: `client/vite.config.ts`, `client/src/api/http.ts`, `client/src/main.tsx`, `server/src/config.ts`, `server/src/middleware/requireAuth.ts`, `server/src/app.ts`.
+- Kiểm thử & Script kiểm chứng: `client/src/api/http.test.ts`, `server/src/config.test.ts`, `server/src/routes/auth.test.ts`, `server/src/app.test.ts`, `scripts/verify-CR-20261126-iis-subpath.mjs`.
+
+### Bằng chứng bàn giao (`docs/evidence/CR-20261126-iis-subpath/`)
+- `docs/evidence/CR-20261126-iis-subpath/verify-output.txt`: biên bản kiểm chứng thực tế.
+- `docs/evidence/CR-20261126-iis-subpath/01-subpath-login-http-prod.png`: màn hình đăng nhập tại `/KSKLaiXe/login` với banner đỏ `MÔI TRƯỜNG THẬT`.
+- `docs/evidence/CR-20261126-iis-subpath/02-subpath-reconcile-authenticated.png`: màn hình Danh sách đối soát tại `/KSKLaiXe/` sau khi đăng nhập qua HTTP LAN.
+- `docs/evidence/CR-20261126-iis-subpath/03-subpath-import-page.png`: màn hình Import Excel tại `/KSKLaiXe/import`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 268/268 tests (`shared`: 145, `server`: 92, `client`: 21, `mock-gksk-api`: 10).
+- `node scripts/verify-CR-20261126-iis-subpath.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Không xung đột với `API-CONTRACT.md`, `DATA-SPEC.md`, `ARCHITECTURE.md` và `PROJECT-RULES.md §3`.
+- ✔ Tài liệu cập nhật đầy đủ trước khi sửa code.
+- ✔ 100% test cũ và test mới đều xanh (`268/268`), 0 test bị `skip`/`only`.
+- ✔ Có đủ ảnh chụp màn hình trình duyệt và log kiểm chứng tại `docs/evidence/CR-20261126-iis-subpath/`.
 
 ## [v1.0.0 / S19] Đóng gói và hướng dẫn vận hành — 2026-11-26 — Antigravity
 ### Đã làm

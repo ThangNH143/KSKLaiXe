@@ -1,0 +1,21 @@
+[2026-11-26T07:45:47.949Z] === BẮT ĐẦU KIỂM CHỨNG CR-20261126-predeploy-ts6-rootdir & RÀ SOÁT TOÀN BỘ DỰ ÁN TRƯỚC DEPLOY ===
+[2026-11-26T07:45:47.958Z] PASS: server/tsconfig.json có compilerOptions.rootDir === ".." (sửa triệt để lỗi VS Code TypeScript 6 rootDir)
+[2026-11-26T07:45:47.958Z] PASS: server/tsconfig.build.json có compilerOptions.rootDir === "src" (giữ nguyên đường dẫn build server/dist/index.js)
+[2026-11-26T07:45:47.960Z] PASS: packages/shared/tsconfig.json có compilerOptions.rootDir === "src"
+[2026-11-26T07:45:47.960Z] PASS: tools/mock-gksk-api/tsconfig.json có compilerOptions.rootDir === "src"
+[2026-11-26T07:45:47.960Z] PASS: client/tsconfig.json có compilerOptions.noEmit === true
+[2026-11-26T07:45:47.960Z] --- Đang chạy: ESLint (npm run lint) (npm.cmd run lint) ---
+[2026-11-26T07:45:52.552Z] PASS: ESLint (npm run lint) hoàn tất (exit code 0)
+[2026-11-26T07:45:52.552Z] --- Đang chạy: TypeScript Typecheck (npm run typecheck) (npm.cmd run typecheck) ---
+[2026-11-26T07:46:08.368Z] PASS: TypeScript Typecheck (npm run typecheck) hoàn tất (exit code 0)
+[2026-11-26T07:46:08.378Z] --- Đang chạy: Production Build (npm run build) (npm.cmd run build) ---
+[2026-11-26T07:46:17.532Z] PASS: Production Build (npm run build) hoàn tất (exit code 0)
+[2026-11-26T07:46:17.533Z] PASS: Sau khi build, server/dist/index.js tồn tại đúng ở gốc server/dist/
+[2026-11-26T07:46:17.533Z] PASS: Sau khi build, KHÔNG bị lồng thư mục server/dist/src/index.js
+[2026-11-26T07:46:17.533Z] PASS: Sau khi build, client/dist/index.html tồn tại đầy đủ
+[2026-11-26T07:46:17.533Z] --- Đang chạy: Vitest Suite (npm test) (npm.cmd test) ---
+[2026-11-26T07:46:40.107Z] PASS: Vitest Suite (npm test) hoàn tất (exit code 0)
+[2026-11-26T07:46:40.107Z] PASS: Toàn bộ 4 workspaces (145 + 92 + 21 + 10 = 268 tests) đều PASS 100%
+[2026-11-26T07:46:40.108Z] PASS: .gitignore đã chặn đầy đủ .env và dist/
+[2026-11-26T07:46:40.108Z] PASS: Không có file .env chứa mật khẩu thật nằm trong thư mục gốc
+[2026-11-26T07:46:40.108Z] === HOÀN TẤT KIỂM CHỨNG CR-20261126-predeploy-ts6-rootdir: 100% PASS, SẴN SÀNG COMMIT & DEPLOY PRODUCTION ===

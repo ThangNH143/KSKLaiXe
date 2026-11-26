@@ -55,6 +55,19 @@ describe('loadConfig', () => {
     });
     expect(cfg.gksk.privateKeyPath).toBeUndefined();
     expect(cfg.auth.loginUser).toBe('admin');
+    expect(cfg.auth.allowInsecureCookie).toBe(false);
+  });
+
+  it('hỗ trợ ALLOW_INSECURE_COOKIE=true cho mạng LAN nội bộ chạy qua HTTP', () => {
+    const cfg = loadConfig(
+      makeValidEnv({
+        APP_ENV: 'production',
+        GKSK_BASE_URL: 'https://ksktd.dongnai.gov.vn',
+        ALLOW_INSECURE_COOKIE: 'true',
+      }),
+    );
+    expect(cfg.appEnv).toBe('production');
+    expect(cfg.auth.allowInsecureCookie).toBe(true);
   });
 
   it('ném ConfigError nêu rõ tên các biến bị thiếu khi thiếu biến bắt buộc', () => {

@@ -28,6 +28,8 @@ export interface SessionStoreOptions {
   sessionSecret: string;
   ttlMs?: number;
   now?: () => number;
+  /** Cho phép cookie phiên gửi qua HTTP trong mạng LAN nội bộ ngay cả khi APP_ENV=production. */
+  allowInsecureCookie?: boolean;
 }
 
 export interface SessionStore {
@@ -103,6 +105,7 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
   const { sessionSecret } = options;
   const ttlMs = options.ttlMs ?? SESSION_TTL_MS;
   const now = options.now ?? (() => Date.now());
+  const allowInsecureCookie = options.allowInsecureCookie ?? false;
   const sessions = new Map<string, SessionRecord>();
 
   function signSessionId(sessionId: string): string {
@@ -201,10 +204,12 @@ export function createSessionStore(options: SessionStoreOptions): SessionStore {
   }
 
   function buildClearCookieOptions(req: Request, appEnv: AppEnv): CookieOptions {
+    const isSecure =
+      isHttpsRequest(req) || (appEnv === 'production' && !allowInsecureCookie);
     return {
       httpOnly: true,
       sameSite: 'lax',
-      secure: appEnv === 'production' || isHttpsRequest(req),
+      secure: isSecure,
       path: '/',
     };
   }
