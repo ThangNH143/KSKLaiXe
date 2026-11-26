@@ -12,6 +12,7 @@
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-26 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md` | Cập nhật `ARCHITECTURE.md §7` mô tả cơ chế `helmet` tự động tắt `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` khi `ALLOW_INSECURE_COOKIE=true`; bổ sung mục **6.1 Nhật ký Sự cố Thường gặp & Cách Xử lý khi Deploy IIS Subpath / NSSM (Troubleshooting)** vào `docs/DEPLOY.md` và bỏ `NODE_ENV=production` khỏi mẫu file `.env` | Sửa dứt điểm lỗi trắng trang (`ERR_CERT_AUTHORITY_INVALID` do CSP `upgrade-insecure-requests`) trên mạng LAN HTTP và ghi nhận đầy đủ kinh nghiệm xử lý sự cố thực tế (`CR-20261126-helmet-lan-http`) |
 | 2026-11-26 | `docs/DEPLOY.md`, `docs/ARCHITECTURE.md`, `.env.example` | Bổ sung **Phương án 3 — Chạy dưới Subpath trên IIS có sẵn (`http://192.168.1.140/KSKLaiXe`)** với cấu hình `VITE_BASE_PATH=/KSKLaiXe`, biến `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ và cập nhật phân quyền SQL thêm `db_ddladmin` cho `gksk_app_user` | Hỗ trợ triển khai thực tế dưới Subpath của Default Web Site IIS trong mạng LAN nội bộ (`CR-20261126-iis-subpath`) |
 | 2026-11-26 | `docs/STEP-PROMPTS.md` | Bổ sung **PHẦN 2 — Bộ Prompt Thêm / Sửa Chức năng, Sửa Lỗi & Bảo trì Code (Sau v1.0.0)** kèm bảng chọn Model Gemini 4 (`Neon High`, `Argon Medium`, `Argon High`) và Quy trình Thay đổi An toàn 6 bước | Giúp người dùng copy-paste khi cần thêm/sửa tính năng hoặc sửa lỗi mà vẫn khóa chặt các quy tắc bảo vệ code hiện có và `PROJECT-RULES.md` |
 | 2026-11-26 | `docs/DEPLOY.md`, `docs/USER-GUIDE.md` | Bổ sung tài liệu triển khai Windows Server + MSSQL (`gksk_*`, NSSM/PM2, Reverse Proxy HTTPS, Backup/Logrotate, Đổi khóa RSA/Mật khẩu) và tài liệu hướng dẫn sử dụng tiếng Việt nhúng 15 ảnh chụp màn hình thực tế từ `docs/evidence/` | Bàn giao vận hành phiên bản `1.0.0` (S19) |
@@ -42,6 +43,35 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [CR-20261126-helmet-lan-http] Xử lý lỗi trắng trang trên mạng LAN HTTP (`helmet` tắt `upgrade-insecure-requests`/HSTS/COOP khi `ALLOW_INSECURE_COOKIE=true`) & Bổ sung cẩm nang Troubleshooting vào `docs/DEPLOY.md` — 2026-11-26 — Antigravity
+### Đã làm
+- **Tài liệu đi trước (`PROJECT-RULES.md §1.2`)**:
+  - Cập nhật `docs/ARCHITECTURE.md` (§7) ghi rõ hành vi của `helmet` ở cả 2 chế độ `ALLOW_INSECURE_COOKIE=false` (HTTPS chuẩn) và `ALLOW_INSECURE_COOKIE=true` (mạng LAN HTTP nội bộ).
+  - Cập nhật `docs/DEPLOY.md`: bỏ dòng `NODE_ENV=production` khỏi mẫu `.env` (tránh cảnh báo của Vite 6 khi chạy `npm run build` vì `NODE_ENV=production` đã được NSSM/PM2 truyền ở môi trường tiến trình) và bổ sung bảng **6.1 Nhật ký Sự cố Thường gặp & Cách Xử lý khi Deploy IIS Subpath / NSSM (Troubleshooting)** ghi nhận chi tiết 4 tình huống thực tế và cách khắc phục.
+- **Sửa cấu hình `helmet` trong `server/src/app.ts`**:
+  - Khi `allowInsecureCookie === true` (`ALLOW_INSECURE_COOKIE=true`): lấy bộ directives mặc định của `helmet.contentSecurityPolicy.getDefaultDirectives()`, xóa riêng `'upgrade-insecure-requests'` (giữ nguyên toàn bộ rule CSP chống XSS khác như `default-src 'self'`, `script-src 'self'`, `object-src 'none'`), đồng thời đặt `hsts: false`, `crossOriginOpenerPolicy: false`, `originAgentCluster: false`. Nhờ đó trình duyệt truy cập qua IP mạng LAN HTTP (`http://192.168.1.140/KSKLaiXe`) không tự động ép đổi URL tải `.js`/`.css` sang `https://` gây lỗi `ERR_CERT_AUTHORITY_INVALID` / màn hình trắng và không báo cảnh báo Console.
+  - Khi `allowInsecureCookie === false` (mặc định): giữ nguyên `app.use(helmet())` bảo mật tối đa như cũ.
+- **Kiểm thử tự động & Bằng chứng thực tế**:
+  - Bổ sung unit test trong `server/src/app.test.ts` kiểm tra đối chiếu HTTP response headers (`content-security-policy`, `strict-transport-security`, `cross-origin-opener-policy`, `origin-agent-cluster`) cho cả 2 chế độ `allowInsecureCookie: false` và `allowInsecureCookie: true`.
+  - Viết và chạy `scripts/verify-CR-20261126-helmet-lan-http.mjs` kiểm chứng toàn bộ `lint`, `typecheck`, `test` (269/269), `build`, kiểm tra headers thực tế và chụp ảnh màn hình Playwright lưu vào `docs/evidence/CR-20261126-helmet-lan-http/`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Tài liệu: `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `CHANGELOG.md`.
+- Mã nguồn & Kiểm thử: `server/src/app.ts`, `server/src/app.test.ts`, `scripts/verify-CR-20261126-helmet-lan-http.mjs`.
+- Bằng chứng: `docs/evidence/CR-20261126-helmet-lan-http/verify-output.txt`, `01-lan-http-subpath-login-loaded.png`, `02-lan-http-subpath-dashboard-loaded.png`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 269/269 tests (`shared`: 145, `server`: 93, `client`: 21, `mock-gksk-api`: 10).
+- `node scripts/verify-CR-20261126-helmet-lan-http.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Khi `ALLOW_INSECURE_COOKIE=true`, header CSP không còn `upgrade-insecure-requests`, không còn HSTS/COOP/Origin-Agent-Cluster trên HTTP LAN.
+- ✔ Khi `ALLOW_INSECURE_COOKIE=false`, giữ nguyên 100% cấu hình `helmet()` mặc định.
+- ✔ Tài liệu `docs/ARCHITECTURE.md` và `docs/DEPLOY.md` (§6.1 Troubleshooting) cập nhật đầy đủ.
+- ✔ Toàn bộ 269/269 tests xanh 100%.
 
 ## [CR-20261126-predeploy-ts6-rootdir] Sửa lỗi `rootDir` trên `server/tsconfig.json` (TypeScript 6 / VS Code) & Rà soát toàn diện dự án trước khi Commit Deploy Production — 2026-11-26 — Antigravity
 ### Đã làm

@@ -274,12 +274,12 @@ Khi máy chủ Windows Server đang chạy sẵn IIS ở cổng 80 (`Default Web
 
 1. **Cấu hình `.env` tại `C:\Apps\GKSKLaiXe\.env`**:
    ```env
-   NODE_ENV=production
    APP_ENV=production
    PORT=3001
    ALLOW_INSECURE_COOKIE=true
    VITE_BASE_PATH=/KSKLaiXe
    ```
+   *(Lưu ý: Không đặt `NODE_ENV=production` bên trong file `.env` vì Vite sẽ cảnh báo khi chạy `npm run build`; biến `NODE_ENV=production` đã được NSSM/PM2 truyền sẵn cho tiến trình Node).*
 2. **Build bản Frontend nhận Subpath `/KSKLaiXe`**:
    ```powershell
    cd C:\Apps\GKSKLaiXe
@@ -317,6 +317,15 @@ Khi máy chủ Windows Server đang chạy sẵn IIS ở cổng 80 (`Default Web
      </configuration>
      ```
    - Từ bất kỳ máy trạm nào trong mạng LAN, mở trình duyệt truy cập: **`http://192.168.1.140/KSKLaiXe`** là sử dụng được ngay!
+
+### 6.1 Nhật ký Sự cố Thường gặp & Cách Xử lý khi Deploy IIS Subpath / NSSM (Troubleshooting)
+
+| # | Triệu chứng / Thông báo lỗi | Nguyên nhân gốc | Cách khắc phục dứt điểm |
+|---|---|---|---|
+| 1 | Khi bấm **Test Settings...** lúc tạo **Add Application** trong IIS Manager xuất hiện cảnh báo vàng: `Authorization — Cannot verify access to path (C:\inetpub\proxies\KSKLaiXe)` | IIS dùng `Pass-through authentication` với tài khoản ảo của Application Pool (`Default_Static_Pool` / `IUSR`), nên hộp thoại Test Settings không tự giả lập kiểm tra quyền trước được. | Bấm **Close → OK** để tiếp tục và cấp quyền đọc `web.config` cho nhóm `IIS_IUSRS` & `IUSR`:<br>`icacls "C:\inetpub\proxies\KSKLaiXe" /grant "IIS_IUSRS:(OI)(CI)RX" /grant "IUSR:(OI)(CI)RX"` |
+| 2 | Truy cập `http://192.168.1.140/KSKLaiXe` báo `Cannot GET /` hoặc không thấy file `C:\Apps\GKSKLaiXe\logs\stdout.log` | 1. Cổng `PORT` trong `.env` (ví dụ `PORT=3002`) lệch với cổng trong `web.config` (`http://127.0.0.1:3001/{R:1}`).<br>2. File `.env` bị dính dòng ```` ```env ```` khi copy-paste.<br>3. Thư mục `C:\Apps\GKSKLaiXe\logs` chưa được tạo trước khi chạy `nssm start`. | 1. Đồng bộ đúng số cổng `PORT` giữa `.env` và `web.config`.<br>2. Xóa các ký tự markdown ```` ``` ```` trong `.env`.<br>3. Tạo thư mục log: `New-Item -ItemType Directory -Force "C:\Apps\GKSKLaiXe\logs"` rồi chạy `nssm restart GKSKLaiXe`. |
+| 3 | Khi chạy `npm run build` xuất hiện cảnh báo: `NODE_ENV=production is not supported in the .env file. Only NODE_ENV=development is supported...` | Vite 6 không cho phép khai báo `NODE_ENV=production` trong file `.env` (Vite tự động dùng `production` khi chạy `vite build`). | Xóa dòng `NODE_ENV=production` khỏi file `.env`. Biến `NODE_ENV=production` chỉ cần đặt trong `AppEnvironmentExtra` của NSSM (hoặc `ecosystem.config.cjs` của PM2). |
+| 4 | Truy cập `http://192.168.1.140/KSKLaiXe` tải được tiêu đề tab nhưng **màn hình trắng tinh**; mở F12 Console thấy lỗi: `Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID` cho `/KSKLaiXe/assets/index-*.js`/`.css`, kèm cảnh báo `Cross-Origin-Opener-Policy` và `Origin-Agent-Cluster` | Khi chạy qua IP mạng LAN bằng HTTP thường (`http://192.168.1.140`), mặc định `helmet()` gửi header `Content-Security-Policy: ... upgrade-insecure-requests` và `Strict-Transport-Security`, khiến trình duyệt tự động ép đổi link tải `.js`/`.css` sang `https://192.168.1.140/...` (va vào chứng chỉ tự ký của IIS nên bị chặn). | Đặt **`ALLOW_INSECURE_COOKIE=true`** trong `.env` và `nssm restart GKSKLaiXe`. Khi biến này bật (`[Commit #22]`), server tự động tắt directive `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` trên HTTP LAN (giữ nguyên các rule CSP chống XSS khác). Nếu trình duyệt đã lỡ nhớ HSTS cho IP đó, xóa cache hoặc vào `chrome://net-internals/#hsts` (hoặc `edge://net-internals/#hsts`) → mục **Delete domain security policies** → nhập `192.168.1.140` → bấm **Delete**, sau đó nhấn `Ctrl + F5`. |
 
 ---
 

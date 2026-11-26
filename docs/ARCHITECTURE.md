@@ -196,7 +196,7 @@ Các bước trong `sendCertificate(id)`:
 | Chống thử mật khẩu | giới hạn 10 lần đăng nhập sai / 15 phút / IP |
 | CSRF | API chỉ nhận `application/json` hoặc `multipart` kèm header tùy biến `X-Requested-With: gksk` do client gắn; từ chối thiếu header với các method ghi |
 | Upload | `multer` bộ nhớ, ≤ 5 MB, chỉ `.xlsx` (kiểm magic bytes `PK`), không ghi đĩa |
-| Header | `helmet` |
+| Header | `helmet`: mặc định bật đầy đủ HSTS, COOP, Origin-Agent-Cluster và CSP `upgrade-insecure-requests`; khi bật `ALLOW_INSECURE_COOKIE=true` (mạng LAN HTTP nội bộ như `http://192.168.1.140/KSKLaiXe`), tự động tắt `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` để trình duyệt không ép nâng cấp tài nguyên `.js`/`.css` sang `https://` gây lỗi `ERR_CERT_AUTHORITY_INVALID` / màn hình trắng, trong khi vẫn giữ nguyên mọi rule CSP chống XSS khác |
 | Log | `pino` có `redact`; không bao giờ log `fields_json`, giá trị từ Excel, `Authorization`, mật khẩu, `data` Base64, `DB_PASSWORD` |
 | PII ở DB | Bảo mật kết nối MSSQL bằng tài khoản riêng; ghi chú phân quyền và sao lưu trong hướng dẫn vận hành (S19) |
 | Hiển thị | Bảng danh sách đối soát không hiện `MATUY`, `NONGDOCON`, `LYDO`, `TINHTRANGBENH`; chỉ hiện trong Drawer xem chi tiết 1 giấy |

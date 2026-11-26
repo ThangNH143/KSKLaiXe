@@ -109,4 +109,36 @@ describe('GET /api/health & Production static client/dist serving (Root + IIS Su
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('cấu hình Helmet: giữ nguyên upgrade-insecure-requests/HSTS/COOP khi allowInsecureCookie=false và tự động tắt chúng khi allowInsecureCookie=true (chống lỗi màn hình trắng trên HTTP LAN)', async () => {
+    const strictApp = createApp({
+      auth: {
+        allowInsecureCookie: false,
+      },
+    });
+    const strictRes = await request(strictApp).get('/api/health');
+    expect(strictRes.status).toBe(200);
+    expect(strictRes.headers['content-security-policy']).toContain(
+      'upgrade-insecure-requests',
+    );
+    expect(strictRes.headers['strict-transport-security']).toBeDefined();
+    expect(strictRes.headers['cross-origin-opener-policy']).toBeDefined();
+    expect(strictRes.headers['origin-agent-cluster']).toBeDefined();
+
+    const lanHttpApp = createApp({
+      auth: {
+        allowInsecureCookie: true,
+      },
+    });
+    const lanRes = await request(lanHttpApp).get('/api/health');
+    expect(lanRes.status).toBe(200);
+    expect(lanRes.headers['content-security-policy']).toBeDefined();
+    expect(lanRes.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(lanRes.headers['content-security-policy']).not.toContain(
+      'upgrade-insecure-requests',
+    );
+    expect(lanRes.headers['strict-transport-security']).toBeUndefined();
+    expect(lanRes.headers['cross-origin-opener-policy']).toBeUndefined();
+    expect(lanRes.headers['origin-agent-cluster']).toBeUndefined();
+  });
 });

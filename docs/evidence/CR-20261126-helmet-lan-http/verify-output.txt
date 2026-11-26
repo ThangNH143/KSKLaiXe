@@ -1,0 +1,24 @@
+[2026-11-26T09:22:13.613Z] === BẮT ĐẦU KIỂM CHỨNG CR-20261126-helmet-lan-http (Tắt upgrade-insecure-requests/HSTS/COOP khi ALLOW_INSECURE_COOKIE=true) ===
+[2026-11-26T09:22:13.614Z] --- Đang chạy: ESLint (npm run lint) (npm.cmd run lint) ---
+[2026-11-26T09:22:18.450Z] PASS: ESLint (npm run lint) hoàn tất (exit code 0)
+[2026-11-26T09:22:18.450Z] --- Đang chạy: TypeScript Typecheck (npm run typecheck) (npm.cmd run typecheck) ---
+[2026-11-26T09:22:36.482Z] PASS: TypeScript Typecheck (npm run typecheck) hoàn tất (exit code 0)
+[2026-11-26T09:22:36.482Z] --- Đang chạy: Vitest Suite (npm test) (npm.cmd test) ---
+[2026-11-26T09:23:03.524Z] PASS: Vitest Suite (npm test) hoàn tất (exit code 0)
+[2026-11-26T09:23:03.525Z] PASS: Toàn bộ 4 workspaces (145 + 93 + 21 + 10 = 269 tests) đều PASS 100%
+[2026-11-26T09:23:03.525Z] --- Đang chạy: Build Subpath /KSKLaiXe (npm run build) (npm.cmd run build) ---
+[2026-11-26T09:23:13.202Z] PASS: Build Subpath /KSKLaiXe (npm run build) hoàn tất (exit code 0)
+[2026-11-26T09:23:15.193Z] PASS: GET /KSKLaiXe/api/health trả HTTP 200 {"ok":true}
+[2026-11-26T09:23:15.205Z] PASS: GET /KSKLaiXe trả HTTP 200
+[2026-11-26T09:23:15.205Z] CSP Header nhận được: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline'
+[2026-11-26T09:23:15.205Z] PASS: CSP vẫn giữ nguyên các rule bảo vệ chống XSS (default-src 'self', script-src 'self', ...)
+[2026-11-26T09:23:15.205Z] PASS: CSP KHÔNG chứa upgrade-insecure-requests khi ALLOW_INSECURE_COOKIE=true (không ép nâng cấp .js/.css sang https://)
+[2026-11-26T09:23:15.206Z] PASS: Header Strict-Transport-Security (HSTS) đã được tắt khi ALLOW_INSECURE_COOKIE=true
+[2026-11-26T09:23:15.206Z] PASS: Header Cross-Origin-Opener-Policy (COOP) đã được tắt trên HTTP LAN
+[2026-11-26T09:23:15.206Z] PASS: Header Origin-Agent-Cluster đã được tắt trên HTTP LAN
+[2026-11-26T09:23:16.631Z] Đã chụp ảnh màn hình đăng nhập Subpath không còn lỗi trắng trang: G:\KSKLaiXe\docs\evidence\CR-20261126-helmet-lan-http\01-lan-http-subpath-login-loaded.png
+[2026-11-26T09:23:17.056Z] Đã chụp ảnh màn hình Danh sách & Đối soát sau khi đăng nhập trên HTTP LAN: G:\KSKLaiXe\docs\evidence\CR-20261126-helmet-lan-http\02-lan-http-subpath-dashboard-loaded.png
+[2026-11-26T09:23:17.056Z] PASS: Trình duyệt có 0 lỗi console/pageerror
+[2026-11-26T09:23:17.543Z] --- Đang chạy: Khôi phục bản build chuẩn (npm run build) (npm.cmd run build) ---
+[2026-11-26T09:23:27.325Z] PASS: Khôi phục bản build chuẩn (npm run build) hoàn tất (exit code 0)
+[2026-11-26T09:23:27.325Z] === HOÀN TẤT KIỂM CHỨNG CR-20261126-helmet-lan-http: 100% PASS ===

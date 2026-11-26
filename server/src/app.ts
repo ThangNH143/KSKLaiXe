@@ -133,12 +133,39 @@ function resolveHostSafely(rawUrl: string): string {
 export function createApp(options?: CreateAppOptions): Express {
   const app = express();
   app.disable('x-powered-by');
-  app.use(helmet());
-  app.use(express.json({ limit: '5mb' }));
 
   const cfg = options?.config;
   const log = options?.logger ?? defaultLogger;
   const repos = options?.repos ?? createRepositories();
+
+  const allowInsecureCookie =
+    options?.auth?.allowInsecureCookie ??
+    cfg?.auth.allowInsecureCookie ??
+    (process.env.ALLOW_INSECURE_COOKIE === 'true' ||
+      process.env.ALLOW_INSECURE_COOKIE === '1');
+
+  // Khi chạy mạng LAN nội bộ qua HTTP (ALLOW_INSECURE_COOKIE=true, vd http://192.168.1.140/KSKLaiXe):
+  // tắt upgrade-insecure-requests, HSTS, COOP và Origin-Agent-Cluster để trình duyệt không tự động ép
+  // nâng cấp tài nguyên .js/.css sang https:// (gây lỗi ERR_CERT_AUTHORITY_INVALID & màn hình trắng),
+  // trong khi vẫn giữ nguyên toàn bộ các directive CSP chống XSS khác.
+  if (allowInsecureCookie) {
+    app.use(
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            'upgrade-insecure-requests': null,
+          },
+        },
+        hsts: false,
+        crossOriginOpenerPolicy: false,
+        originAgentCluster: false,
+      }),
+    );
+  } else {
+    app.use(helmet());
+  }
+
+  app.use(express.json({ limit: '5mb' }));
 
   const appEnv: AppEnv =
     options?.appEnv ??
@@ -200,11 +227,6 @@ export function createApp(options?: CreateAppOptions): Express {
 
   const loginPasswordHash = rawLoginPasswordHash ?? getDefaultTestPasswordHash();
   const sessionSecret = rawSessionSecret ?? DEFAULT_TEST_SESSION_SECRET;
-  const allowInsecureCookie =
-    options?.auth?.allowInsecureCookie ??
-    cfg?.auth.allowInsecureCookie ??
-    (process.env.ALLOW_INSECURE_COOKIE === 'true' ||
-      process.env.ALLOW_INSECURE_COOKIE === '1');
 
   const subpathPrefix = normalizeSubpathPrefix(
     options?.basePath ?? process.env.VITE_BASE_PATH,
