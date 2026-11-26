@@ -151,7 +151,8 @@ Xem `CHANGELOG.md`. Bước bắt đầu: **S0**.
 
 ## 10. Câu hỏi mở (tóm tắt — chi tiết ở `docs/OPEN-QUESTIONS.md`)
 
-- ✅ Độ dài từng thẻ: đã có từ bảng BHXH ([ksk_laixe_01.webp](file:///g:/KSKLaiXe/docs/reference/ksk_laixe_01.webp), [ksk_laixe_02.webp](file:///g:/KSKLaiXe/docs/reference/ksk_laixe_02.webp), [ksk_laixe_03.webp](file:///g:/KSKLaiXe/docs/reference/ksk_laixe_03.webp) → DATA-SPEC §1). Còn mở: server đếm theo ký tự hay byte (Q13).
-- ✅ Gốc XML `<root>`, thẻ giới tính `<GIOITINHVAL>`, và xuất đủ các thẻ rỗng (`NGAYKHAMLAI`, `LYDO`, `TINHTRANGBENH`): đã xác nhận từ file mẫu `docs/reference/gksk_mau_ky_so_root.xml` (Q2, Q9, Q10).
+- ✅ Độ dài từng thẻ: đã có từ bảng BHXH ([ksk_laixe_01.webp](file:///g:/KSKLaiXe/docs/reference/ksk_laixe_01.webp), [ksk_laixe_02.webp](file:///g:/KSKLaiXe/docs/reference/ksk_laixe_02.webp), [ksk_laixe_03.webp](file:///g:/KSKLaiXe/docs/reference/ksk_laixe_03.webp) → DATA-SPEC §1). Đã kiểm chứng và chốt ở S18: đếm theo **ký tự Unicode NFC** (Q13).
+- ✅ Gốc XML `<root>`, thẻ giới tính `<GIOITINHVAL>`, và xuất đủ các thẻ rỗng (`NGAYKHAMLAI`, `LYDO`, `TINHTRANGBENH`): đã xác nhận từ file mẫu `docs/reference/gksk_mau_ky_so_root.xml` và kiểm chứng thực tế ở S18 (Q2, Q9, Q10).
 - ✅ Tải nhiều XML cùng lúc (ZIP) (Q4): **Có** — hỗ trợ cả xem trước/tải lẻ `<SO>.xml` và tải gộp `.zip`.
 - ✅ Tự sinh mã `SO` (Q12): **Không** — lấy trực tiếp từ file Excel import; chỉ cảnh báo thông tin `LOCAL_SO_FORMAT`.
+- ✅ Các câu hỏi Q5, Q6, Q8, Q11 đã được chốt đầy đủ tại `docs/OPEN-QUESTIONS.md` ở bước S18.

@@ -1,9 +1,16 @@
+import fs from 'node:fs';
 import { ping } from '@gksk/shared';
 import { createApp } from './app.js';
 import { ConfigError, loadConfigFromEnvFile } from './config.js';
+import {
+  createMssqlPool,
+  createRepositories,
+  runMigrations,
+} from './db/connection.js';
+import type { DbRepositories } from './db/types.js';
 import { createLogger } from './logger.js';
 
-function start(): void {
+async function start(): Promise<void> {
   let config;
   try {
     config = loadConfigFromEnvFile();
@@ -19,7 +26,66 @@ function start(): void {
   }
 
   const logger = createLogger({ level: config.logLevel });
-  const app = createApp({ config, logger });
+
+  let repos: DbRepositories;
+  if (process.env.GKSK_USE_IN_MEMORY_DB === '1') {
+    repos = createRepositories();
+    logger.info(
+      { dbKind: repos.kind },
+      'Đang sử dụng InMemoryRepositories (GKSK_USE_IN_MEMORY_DB=1)',
+    );
+  } else {
+    try {
+      const pool = await createMssqlPool(config.db);
+      const appliedMigrations = await runMigrations(pool);
+      repos = createRepositories(pool);
+      const recoveredCount = await repos.certificates.recoverOnStartup();
+      logger.info(
+        {
+          dbKind: repos.kind,
+          dbHost: config.db.host,
+          dbPort: config.db.port,
+          dbName: config.db.name,
+          appliedMigrations,
+          recoveredStuckSendingCount: recoveredCount,
+        },
+        'Đã kết nối MSSQL và khởi tạo an toàn 4 bảng gksk_*',
+      );
+    } catch (err) {
+      logger.error(
+        {
+          dbHost: config.db.host,
+          dbPort: config.db.port,
+          dbName: config.db.name,
+          errorMessage: err instanceof Error ? err.message : String(err),
+        },
+        'Không thể kết nối hoặc chạy migration trên MSSQL Server',
+      );
+      process.exit(1);
+    }
+  }
+
+  let privateKeyPem: string | undefined;
+  if (config.gksk.privateKeyPath) {
+    try {
+      privateKeyPem = fs.readFileSync(config.gksk.privateKeyPath, 'utf8');
+    } catch (err) {
+      logger.error(
+        {
+          errorMessage: err instanceof Error ? err.message : String(err),
+        },
+        'Không thể đọc file khóa riêng RSA (GKSK_PRIVATE_KEY_PATH)',
+      );
+      process.exit(1);
+    }
+  }
+
+  const app = createApp({
+    config,
+    repos,
+    ...(privateKeyPem !== undefined ? { privateKeyPem } : {}),
+    logger,
+  });
 
   app.listen(config.port, '127.0.0.1', () => {
     logger.info(
@@ -27,6 +93,7 @@ function start(): void {
         port: config.port,
         appEnv: config.appEnv,
         facilityId: config.gksk.facilityId,
+        dbKind: repos.kind,
         shared: ping(),
       },
       'GKSKLaiXe server listening',
@@ -34,4 +101,4 @@ function start(): void {
   });
 }
 
-start();
+void start();

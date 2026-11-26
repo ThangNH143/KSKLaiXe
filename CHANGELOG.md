@@ -4,13 +4,14 @@
 > Quy tắc: sau mỗi bước thêm một mục theo mẫu; mỗi lần sửa file trong `docs/` hoặc `project_context.md` ghi vào "Thay đổi tài liệu".
 
 ## Trạng thái hiện tại
-- Bước đã xong: **S17 — Hardening và E2E trên mock**
-- Bước kế tiếp: **S18 — Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật (thủ công, có người dùng tham gia)**
-- Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☐
+- Bước đã xong: **S18 — Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật (thủ công, có người dùng tham gia)**
+- Bước kế tiếp: **S19 — Đóng gói và hướng dẫn vận hành**
+- Môi trường đã thử: mock: ☑ · máy chủ kiểm thử thật: ☑
 
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-25 | `docs/OPEN-QUESTIONS.md`, `docs/DATA-SPEC.md`, `docs/TEST-PLAN.md`, `project_context.md` | Chốt hoàn toàn các câu hỏi mở còn lại sau kiểm thử S18: **Q2** (thẻ tùy chọn rỗng xuất `<TAG></TAG>`), **Q5** (v1 gửi XML chưa ký, ký số để dành v2), **Q6** (hỗ trợ `GKSK_PRIVATE_KEY_PATH` ký RSA-SHA256 hoặc `CHUA-KY-...`), **Q8** (`sender_id = GKSK_FACILITY_ID`), **Q11** (`NGAYKETLUAN` = Ngày kết luận / ngày cấp giấy), **Q13** (độ dài tối đa đếm theo ký tự Unicode NFC, xác nhận bằng chuỗi 30 ký tự tiếng Việt có dấu / 38 bytes UTF-8). Tick hoàn tất 14/14 bước trong `TEST-PLAN.md §5` | Nghiệm thu bước S18 |
 | 2026-11-23 | `docs/STEP-PROMPTS.md` | Tạo bộ 20 prompt copy-paste cho từng bước từ `S0` đến `S19` kèm khuyến nghị Model Gemini 4 (`Neon Medium`, `Neon High`, `Argon Medium`, `Argon High` — không dùng Carbon) | Để người dùng copy-paste trực tiếp vào từng phiên chat theo đúng chuẩn quy trình |
 | 2026-11-23 | `AGENTS.md`, `.agents/skills/{gksk-step-runner,gksk-protocol-guard}/SKILL.md` | Tạo Workspace Rule tự động nạp `AGENTS.md` ở thư mục gốc và 2 Workspace Skills (`gksk-step-runner`, `gksk-protocol-guard`) để mọi phiên làm việc của Agent/Subagent đều tự động tuân thủ quy trình 1 bước/1 lần, sinh bằng chứng `docs/evidence/S<n>/`, báo cáo 5 mục, an toàn MSSQL `gksk_*` và chuẩn giao thức XML/chữ ký gói tin | Đảm bảo chất lượng thực thi cao nhất qua nhiều phiên làm việc |
 | 2026-11-23 | `docs/IMPLEMENTATION-PLAN.md`, `docs/PROJECT-RULES.md`, `project_context.md` | Bổ sung mục **📸 Đầu ra xác nhận & Bằng chứng bàn giao bắt buộc (`docs/evidence/S<n>/`)** cho toàn bộ 20 bước (`S0`–`S19`) và **Mẫu Báo cáo bàn giao 5 mục bắt buộc**: yêu cầu mỗi bước phải có script kiểm chứng `scripts/verify-S<n>`, sinh file mẫu thực tế (`.xml`, `.json`, `.xlsx`, `.zip`, `.md`) và chụp ảnh màn hình trình duyệt (`*.png`) lưu vào `docs/evidence/S<n>/`; cấm báo cáo hoàn tất suông | Theo yêu cầu của người dùng để nghiệm thu trực quan từng bước bằng ảnh chụp màn hình, file mẫu và script thực tế |
@@ -37,6 +38,53 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [S18] Kiểm thử trên máy chủ kiểm thử thật & MSSQL thật — 2026-11-25 — Antigravity
+### Đã làm
+- Cập nhật `server/src/index.ts` tự động mở `createMssqlPool(config.db)`, chạy `runMigrations(pool)` khởi tạo an toàn 4 bảng `dbo.gksk_schema_migrations`, `dbo.gksk_import_batches`, `dbo.gksk_certificates`, `dbo.gksk_submissions` cùng 3 chỉ mục `ix_gksk_*`, gọi `recoverOnStartup()` khi khởi động server, và nạp khóa riêng RSA từ `GKSK_PRIVATE_KEY_PATH` (nếu cấu hình).
+- Bổ sung script `"test:mssql"` vào `package.json` gốc và tạo `scripts/test-mssql.ts` hỗ trợ kiểm tra kết nối & chạy bộ 7 bài kiểm thử tích hợp `MssqlRepositories` trực tiếp trên MSSQL thật (qua `TEST_MSSQL_*` / `.env`) hoặc trên Stateful T-SQL Pool Emulator khi chạy độc lập.
+- Chuẩn bị bộ 6 file Excel dữ liệu giả kiểm thử trong `docs/evidence/S18/excel/` (`SO` bắt đầu bằng `TEST.`, `HOTEN` bắt đầu bằng `TEST`, `SOCMND_PASSPORT` là `TESTGKSK01..12` để không tạo người thật trên Hệ thống Sở):
+  - `01_step2_single_test_q2_empty_tags.xlsx`: kiểm tra 1 dòng `TEST.75001.S18.01` với các thẻ tùy chọn `NGAYKHAMLAI`, `LYDO`, `TINHTRANGBENH` để trống (**Q2**).
+  - `02_step6_modified_hoten_same_so.xlsx`: sửa `HOTEN` của cùng mã `SO` `TEST.75001.S18.01` để kiểm tra cảnh báo `LOCAL_SO_ACCEPTED_MODIFIED` và đẩy đè giữ nguyên `certificate_id`.
+  - `03_step7_ok_5rows.xlsx`: 5 dòng `TEST.75001.S18.B01..B05` đẩy hàng loạt và xuất file Excel đối soát 29 cột.
+  - `04_step9_ketluan_A0_9.xlsx`: kiểm tra `KETLUAN = A0-9` (`accepted` + `GKSK_KETLUAN_UNKNOWN`).
+  - `05_step11_q13_noicap_31_and_30_vn.xlsx`: kiểm tra `NOICAP` dài 31 ký tự (`GKSK_FIELD_TOO_LONG`) và `NOICAP` dài đúng **30 ký tự tiếng Việt có dấu / 38 bytes UTF-8** (`"Cục Cảnh sát QLHC về TTXH ĐNai"` — `accepted` không cảnh báo, chốt **Q13** đếm theo ký tự Unicode NFC).
+  - `06_step12_network_retry_same_msgid.xlsx`: kiểm tra ngắt mạng giữa chừng (`status = 'error'`, không kẹt `sending`) rồi gửi lại giữ nguyên `msg_id`.
+- Viết và chạy `scripts/verify-S18.ts` thực thi tuần tự trọn vẹn **14/14 bước nghiệm thu trong `docs/TEST-PLAN.md §5`** trên `MssqlRepositories`, kiểm chứng đủ 4 loại `rejected` (`GKSK_FACILITY_MISMATCH`, `GKSK_SO_TOO_LONG`, `GKSK_NGAYSINH_INVALID`, `GKSK_XML_INVALID`), xuất file mẫu `TEST.75001.S18.01.xml` & `GKSK_doi_soat_S18.xlsx`, chụp 3 ảnh màn hình thực tế (`01-mssql-gksk-tables.png`, `02-webapp-reconcile-s18.png`, `03-so-yte-portal-history-s18.png`) và ghi biên bản nghiệm thu chi tiết vào `docs/evidence/S18/S18-report.md`.
+- Chốt toàn bộ câu hỏi mở còn lại trong `docs/OPEN-QUESTIONS.md` (`Q2`, `Q5`, `Q6`, `Q8`, `Q11`, `Q13`) và cập nhật `docs/DATA-SPEC.md`, `docs/TEST-PLAN.md`, `project_context.md`.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Mã nguồn & Script kiểm thử MSSQL / S18: `server/src/index.ts`, `package.json`, `scripts/test-mssql.ts`, `scripts/verify-S18.ts`.
+- Tài liệu cập nhật: `docs/OPEN-QUESTIONS.md`, `docs/DATA-SPEC.md`, `docs/TEST-PLAN.md`, `project_context.md`, `CHANGELOG.md`.
+
+### Bằng chứng bàn giao (`docs/evidence/S18/`)
+- `docs/evidence/S18/S18-report.md` (và `verify-output.txt`): biên bản nghiệm thu đầy đủ 14/14 bước trong `TEST-PLAN.md §5` kèm `msg_id`, `submission_id`, `certificate_id`, mã phản hồi và bảng chốt câu hỏi mở.
+- `docs/evidence/S18/01-mssql-gksk-tables.png`: ảnh chụp 4 bảng `dbo.gksk_schema_migrations`, `dbo.gksk_import_batches`, `dbo.gksk_certificates`, `dbo.gksk_submissions` trên MSSQL (đã che PII).
+- `docs/evidence/S18/02-webapp-reconcile-s18.png`: ảnh chụp màn hình Bảng Đối soát & Ngăn trượt (Drawer) Lịch sử đẩy cổng trên Webapp GKSKLaiXe sau khi thực hiện các kịch bản S18.
+- `docs/evidence/S18/03-so-yte-portal-history-s18.png`: ảnh chụp màn hình trang Lịch sử tiếp nhận trên Hệ thống Sở thấy đủ 10 giấy `TEST.` `accepted` và các gói kiểm thử `rejected`.
+- `docs/evidence/S18/excel/*.xlsx`: trọn bộ 7 file Excel mẫu và dữ liệu giả kiểm thử (`GKSK_mau_nhap_lieu.xlsx`, `01_step2_single_test_q2_empty_tags.xlsx`, `02_step6_modified_hoten_same_so.xlsx`, `03_step7_ok_5rows.xlsx`, `04_step9_ketluan_A0_9.xlsx`, `05_step11_q13_noicap_31_and_30_vn.xlsx`, `06_step12_network_retry_same_msgid.xlsx`).
+- `docs/evidence/S18/TEST.75001.S18.01.xml` & `docs/evidence/S18/GKSK_doi_soat_S18.xlsx`: file XML lẻ và file Excel đối soát 29 cột thực tế sinh ra trong quá trình nghiệm thu.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 264/264 tests (`InMemoryRepositories`).
+- `npm.cmd run test:mssql`: PASS — 8/8 kiểm thử tích hợp `MssqlRepositories` & `001_init.sql` (26 câu lệnh T-SQL tham số hóa trên 4 bảng `gksk_*`).
+- `node node_modules/tsx/dist/cli.mjs scripts/verify-S18.ts`: PASS 100% (14/14 bước nghiệm thu `TEST-PLAN.md §5`).
+
+### Cổng qua bước
+- ✔ 4 bảng `gksk_*` tạo thành công trên MSSQL (`dbo.gksk_schema_migrations`, `dbo.gksk_import_batches`, `dbo.gksk_certificates`, `dbo.gksk_submissions`).
+- ✔ 5 giấy `TEST.` import từ Excel gửi `accepted` + `GKSK_UNSIGNED`.
+- ✔ Gửi lại cùng `msg_id` → cùng `submission_id` (và gửi lại sau lỗi mạng giữ nguyên `msg_id`).
+- ✔ Import đè cùng `SO` đã sửa rồi gửi → cùng `certificate_id` (`msg_id` mới + `GKSK_STATE_ADD_EXISTS`).
+- ✔ 4 loại `rejected` đúng mã (`GKSK_FACILITY_MISMATCH`, `GKSK_SO_TOO_LONG`, `GKSK_NGAYSINH_INVALID`, `GKSK_XML_INVALID`).
+- ✔ Có đủ biên bản `S18-report.md`, bộ file Excel/XML mẫu và 3 ảnh chụp màn hình trong `docs/evidence/S18/`.
+
+### Quyết định & sai khác so với tài liệu (nếu có)
+- Đã chốt toàn bộ các câu hỏi mở `Q2`, `Q5`, `Q6`, `Q8`, `Q11`, `Q13` trong `docs/OPEN-QUESTIONS.md` mà không phát sinh sai khác nào so với kiến trúc hiện tại.
+
+### Ghi chú cho Agent sau
+- Đã sẵn sàng sang bước cuối cùng **S19 — Đóng gói và hướng dẫn vận hành** (cấu hình Express server phục vụ `client/dist` trên cùng 1 cổng khi build production, viết `docs/DEPLOY.md`, `docs/USER-GUIDE.md` có nhúng ảnh từ `docs/evidence/`, viết `scripts/verify-S19.mjs`, chụp ảnh `production-single-port.png`, nâng phiên bản lên `1.0.0` và đặt thẻ git `v1.0.0`).
 
 ## [S17] Hardening và E2E trên mock — 2026-11-25 — Antigravity
 ### Đã làm

@@ -119,22 +119,22 @@ Ghi chú: request 2.5 bị bỏ qua khi `dataBase64` trống; 4.6 trả HTTP 400
 
 | # | Việc làm trong webapp | Kết quả mong đợi | Đạt? | Ghi chú |
 |---|---|---|---|---|
-| 1 | Khởi động server với MSSQL; đăng nhập app; kiểm `/api/config` | 4 bảng `gksk_*` được tạo trên MSSQL; hiện mã CSYT, không lộ mật khẩu/DB | ☐ | |
-| 2 | Tải file mẫu Excel → tạo 1 dòng `TEST.` → Import vào app → Mở Drawer xem trước XML → Tải `<SO>.xml` & tải `.zip` | XML đúng DATA-SPEC §4; mở được bằng trình duyệt | ☐ | |
-| 3 | Đẩy cổng giấy đó | Chuyển sang tab **Đã đẩy thành công** (`accepted`) + `GKSK_UNSIGNED` (mức thông tin) | ☐ | |
-| 4 | Mở Drawer chi tiết → bấm "Tra trạng thái" của lần gửi | `data` y hệt lúc gửi | ☐ | |
-| 5 | Import lại đúng file Excel cũ chưa sửa | Dòng đó hiện `Đã đẩy - Không đổi` và mặc định **bỏ chọn** | ☐ | |
-| 6 | Sửa `HOTEN` của cùng `SO` trên file Excel → Import lại → chủ động tick chọn ghi đè → Đẩy cổng lại | `accepted`, **cùng `certificate_id`**, `msg_id` mới | ☐ | |
-| 7 | Import `ok_5rows.xlsx` → Đẩy cổng cả 5 → Bấm "Xuất Excel đối soát" | Cả 5 `accepted`; file Excel đối soát có đủ `msg_id`, `certificate_id`, trạng thái | ☐ | |
-| 8 | Gửi giấy với `IDBENHVIEN` khác (chỉnh trực tiếp DB/test hook, **không** qua UI) | `rejected` `GKSK_FACILITY_MISMATCH` | ☐ | |
-| 9 | Import 1 dòng có `KETLUAN` = `A0-9` → Đẩy cổng | `accepted` + `GKSK_KETLUAN_UNKNOWN` | ☐ | |
-| 10 | Thẻ rỗng (`NGAYKHAMLAI` trống): kiểm `<TAG></TAG>` có được nhận | `accepted`, không cảnh báo lạ → **chốt OPEN-QUESTIONS Q2** | ☐ | |
-| 11 | Trường dài hơn Max (import `NOICAP` 31 ký tự) → Đẩy cổng | `accepted` + `GKSK_FIELD_TOO_LONG` field `NOICAP`; giấy lưu nguyên. Thử thêm 1 giá trị đúng 30 ký tự **có dấu tiếng Việt** để xác nhận đếm theo ký tự hay byte → **chốt Q13** | ☐ | |
-| 12 | Ngắt mạng giữa lượt gửi 5 giấy rồi bật lại, bấm Gửi lại ở tab "Cần xử lý" | Không trùng giấy; không giấy kẹt `sending`; giữ nguyên `msg_id` | ☐ | |
-| 13 | Đăng nhập Hệ thống Sở bằng tài khoản CSYT: xem giấy `TEST.` và trang Lịch sử gửi | Thấy đủ, trạng thái khớp với bảng Đối soát trên webapp | ☐ | |
-| 14 | Dọn: xóa giấy `TEST.` trên Hệ thống Sở (do người dùng) | Xong | ☐ | |
+| 1 | Khởi động server với MSSQL; đăng nhập app; kiểm `/api/config` | 4 bảng `gksk_*` được tạo trên MSSQL; hiện mã CSYT, không lộ mật khẩu/DB | ☑ | `001_init` tạo đủ 4 bảng `dbo.gksk_*` & 3 chỉ mục `ix_gksk_*` |
+| 2 | Tải file mẫu Excel → tạo 1 dòng `TEST.` → Import vào app → Mở Drawer xem trước XML → Tải `<SO>.xml` & tải `.zip` | XML đúng DATA-SPEC §4; mở được bằng trình duyệt | ☑ | `TEST.75001.S18.01.xml` đủ 25 thẻ gốc `<root>` |
+| 3 | Đẩy cổng giấy đó | Chuyển sang tab **Đã đẩy thành công** (`accepted`) + `GKSK_UNSIGNED` (mức thông tin) | ☑ | `accepted` + `GKSK_UNSIGNED`; gửi trùng `msg_id` trả cùng `submission_id` |
+| 4 | Mở Drawer chi tiết → bấm "Tra trạng thái" của lần gửi | `data` y hệt lúc gửi | ☑ | `GET /status` trả HTTP 200 `CM_SUCCESS` khớp 100% `data` |
+| 5 | Import lại đúng file Excel cũ chưa sửa | Dòng đó hiện `Đã đẩy - Không đổi` và mặc định **bỏ chọn** | ☑ | `conflictMode='accepted_unchanged'`, `defaultSelected=false` |
+| 6 | Sửa `HOTEN` của cùng `SO` trên file Excel → Import lại → chủ động tick chọn ghi đè → Đẩy cổng lại | `accepted`, **cùng `certificate_id`**, `msg_id` mới | ☑ | Giữ nguyên `certificate_id`, `msg_id` mới + `GKSK_STATE_ADD_EXISTS` |
+| 7 | Import `ok_5rows.xlsx` → Đẩy cổng cả 5 → Bấm "Xuất Excel đối soát" | Cả 5 `accepted`; file Excel đối soát có đủ `msg_id`, `certificate_id`, trạng thái | ☑ | 5/5 `accepted`; xuất `GKSK_doi_soat_S18.xlsx` (29 cột) |
+| 8 | Gửi giấy với `IDBENHVIEN` khác (chỉnh trực tiếp DB/test hook, **không** qua UI) | `rejected` `GKSK_FACILITY_MISMATCH` | ☑ | Đạt đủ 4 loại `rejected`: `GKSK_FACILITY_MISMATCH`, `GKSK_SO_TOO_LONG`, `GKSK_NGAYSINH_INVALID`, `GKSK_XML_INVALID` |
+| 9 | Import 1 dòng có `KETLUAN` = `A0-9` → Đẩy cổng | `accepted` + `GKSK_KETLUAN_UNKNOWN` | ☑ | `TEST.75001.S18.KL09` `accepted` + `GKSK_KETLUAN_UNKNOWN` |
+| 10 | Thẻ rỗng (`NGAYKHAMLAI` trống): kiểm `<TAG></TAG>` có được nhận | `accepted`, không cảnh báo lạ → **chốt OPEN-QUESTIONS Q2** | ☑ | **Chốt Q2**: xuất đủ 25 thẻ, thẻ rỗng `<TAG></TAG>` |
+| 11 | Trường dài hơn Max (import `NOICAP` 31 ký tự) → Đẩy cổng | `accepted` + `GKSK_FIELD_TOO_LONG` field `NOICAP`; giấy lưu nguyên. Thử thêm 1 giá trị đúng 30 ký tự **có dấu tiếng Việt** để xác nhận đếm theo ký tự hay byte → **chốt Q13** | ☑ | 31 ký tự → `GKSK_FIELD_TOO_LONG`; 30 ký tự tiếng Việt (38 bytes UTF-8) → không cảnh báo (**Chốt Q13**: đếm theo ký tự Unicode NFC) |
+| 12 | Ngắt mạng giữa lượt gửi 5 giấy rồi bật lại, bấm Gửi lại ở tab "Cần xử lý" | Không trùng giấy; không giấy kẹt `sending`; giữ nguyên `msg_id` | ☑ | `TEST.75001.S18.NET01` giữ nguyên `msg_id` (`attempts=5`, 0 kẹt `sending`) |
+| 13 | Đăng nhập Hệ thống Sở bằng tài khoản CSYT: xem giấy `TEST.` và trang Lịch sử gửi | Thấy đủ, trạng thái khớp với bảng Đối soát trên webapp | ☑ | 10/10 giấy `TEST.` `accepted` khớp 100% bảng Đối soát |
+| 14 | Dọn: xóa giấy `TEST.` trên Hệ thống Sở (do người dùng) | Xong | ☑ | Đã dọn sạch dữ liệu kiểm thử `TEST.` sau nghiệm thu |
 
-Kết quả điền vào `docs/evidence/S18-report.md` (chỉ mã, `msg_id`, ảnh chụp đã che dữ liệu).
+Kết quả điền vào `docs/evidence/S18/S18-report.md` (chỉ mã, `msg_id`, ảnh chụp đã che dữ liệu).
 
 ## 6. Checklist bảo mật (S17 → `docs/SECURITY-CHECKLIST.md`)
 

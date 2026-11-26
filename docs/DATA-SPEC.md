@@ -65,7 +65,7 @@ Không đưa vào XML: `SIGNDATA` (v1 không ký), `MOBILE`, `EMAIL`, `UUID`, `S
 | `LOCAL_SO_ACCEPTED_MODIFIED` | warning | `SO` đã đẩy thành công (`accepted`) nhưng dữ liệu trong file Excel **có thay đổi** so với bản đã đẩy — mặc định **bỏ chọn**, cảnh báo người dùng (cho phép tick chọn thủ công nếu thực sự muốn cập nhật và đẩy đè lên Sở) |
 | `LOCAL_FACILITY_MISMATCH` | error | Excel có cột `IDBENHVIEN` khác cấu hình (chỉ ở import, lỗi chặn) |
 
-Độ dài đếm theo **ký tự Unicode** (đã chuẩn hóa NFC), không theo byte — chưa rõ BHXH/Sở đếm theo byte hay ký tự (xem OPEN-QUESTIONS Q13).
+Độ dài đếm theo **ký tự Unicode** (đã chuẩn hóa NFC, `[...val.normalize('NFC')].length`), không theo byte — đã kiểm chứng và chốt ở S18 (xem `docs/OPEN-QUESTIONS.md` Q13: chuỗi `NOICAP` dài đúng 30 ký tự tiếng Việt có dấu / 38 bytes UTF-8 được nhận hợp lệ không cảnh báo `GKSK_FIELD_TOO_LONG`).
 
 ## 3. Chuẩn hóa trước khi kiểm tra (hàm thuần ở `shared/normalize.ts`)
 
@@ -100,7 +100,7 @@ Không đưa vào XML: `SIGNDATA` (v1 không ký), `MOBILE`, `EMAIL`, `UUID`, `S
 ```
 - Gốc `<root>`. Khai báo `<?xml version="1.0" encoding="UTF-8"?>`. **Không** BOM, **không** `DOCTYPE`, **không** comment, **không** `Signature`.
 - Escape giá trị: `&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`, `"`→`&quot;`, `'`→`&apos;`.
-- Thẻ rỗng ghi `<TAG></TAG>` (xác nhận ở S18; xem OPEN-QUESTIONS Q2).
+- Thẻ rỗng ghi `<TAG></TAG>` (đã kiểm chứng và chốt ở S18; xem `docs/OPEN-QUESTIONS.md` Q2).
 - Thụt 2 khoảng trắng, kết thúc dòng `\n`. Kích thước ≤ 1 MB (không bao giờ đạt với giấy thật, nhưng kiểm).
 - Test round-trip: parse lại bằng `fast-xml-parser` ra đúng 25 giá trị đã chuẩn hóa, kể cả ký tự `& < > " '` và tiếng Việt có dấu.
 
