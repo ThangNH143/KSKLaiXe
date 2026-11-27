@@ -15,6 +15,26 @@ export const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 giờ theo ARCHITECTURE.m
 export const CSRF_HEADER_NAME = 'x-requested-with';
 export const CSRF_HEADER_VALUE = 'gksk';
 
+/**
+ * Danh sách 3 tài khoản quản trị hệ thống được phép truy cập chức năng
+ * Hệ thống & Tài khoản và Cấu hình nóng Tài khoản CSYT trên Cổng MasterFlow Sở Y tế.
+ */
+export const SYSTEM_ADMIN_USERNAMES = ['admin', 'thangnh', 'kienvd'] as const;
+
+const SYSTEM_ADMIN_SET = new Set<string>(SYSTEM_ADMIN_USERNAMES);
+
+/**
+ * Kiểm tra tên đăng nhập có thuộc nhóm 3 quản trị viên hệ thống (`admin`, `thangnh`, `kienvd`) hay không.
+ */
+export function isSystemAdminUsername(
+  username: string | undefined | null,
+): boolean {
+  if (typeof username !== 'string') {
+    return false;
+  }
+  return SYSTEM_ADMIN_SET.has(username.trim().toLowerCase());
+}
+
 const WRITE_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 
 export interface SessionRecord {
@@ -261,6 +281,31 @@ export function createRequireAuthMiddleware(
       return;
     }
     requestSessions.set(req, session);
+    next();
+  };
+}
+
+/**
+ * Middleware chỉ cho phép 3 tài khoản quản trị hệ thống (`admin`, `thangnh`, `kienvd`)
+ * truy cập các API quản trị người dùng (`/api/users*`) và cấu hình/kiểm tra kết nối CSYT (`/api/system/*`).
+ * Các tài khoản khác sẽ nhận HTTP 403 (`FORBIDDEN_SYSTEM_ADMIN`).
+ */
+export function createRequireSystemAdminMiddleware(): RequestHandler {
+  return function requireSystemAdmin(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): void {
+    const session = getAuthSession(req);
+    if (!session || !isSystemAdminUsername(session.username)) {
+      sendErrorResponse(
+        res,
+        403,
+        'FORBIDDEN_SYSTEM_ADMIN',
+        'Chức năng Hệ thống & Cấu hình tài khoản CSYT chỉ dành cho quản trị viên được phân quyền (admin, thangnh, kienvd).',
+      );
+      return;
+    }
     next();
   };
 }

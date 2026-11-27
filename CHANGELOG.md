@@ -12,6 +12,7 @@
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-27 | `docs/ARCHITECTURE.md`, `docs/USER-GUIDE.md` | Cập nhật `ARCHITECTURE.md §4` và `USER-GUIDE.md` ghi rõ quy tắc phân quyền: chỉ 3 tài khoản quản trị (`admin`, `thangnh`, `kienvd`) được hiển thị và truy cập chức năng **Hệ thống & Tài khoản** (`/api/users*`, `/api/system/*`) và **Cấu hình nóng Tài khoản CSYT**; các tài khoản khác chỉ hiển thị và sử dụng chức năng **Đổi mật khẩu cá nhân** (`POST /api/auth/change-password`) | Theo yêu cầu giới hạn quyền quản trị hệ thống cho 3 tài khoản `admin`, `thangnh`, `kienvd` (`CR-20261127-restrict-system-admin`) |
 | 2026-11-27 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md` | Cập nhật `ARCHITECTURE.md §4` mô tả Chẩn đoán 2 bước trên `POST /api/system/check-connection` và endpoint `GET / PUT /api/system/gksk-config` (cập nhật nóng tài khoản/mật khẩu CSYT, tự động bọc ngoặc kép cho ký tự `#`/`$` trong `.env`, hoặc đọc lại từ `.env`); bổ sung mục **Troubleshooting #6** trong `docs/DEPLOY.md` giải thích rõ nguyên nhân và cách xử lý lỗi `HTTP 403` khi đẩy cổng MasterFlow | Xử lý dứt điểm lỗi HTTP 403 tài khoản/mật khẩu CSYT khi đổi mật khẩu trên MasterFlow hoặc sửa `.env` (`CR-20261127-syt-403-diagnostic`) |
 | 2026-11-27 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `docs/USER-GUIDE.md`, `.env.example` | Bổ sung bảng `dbo.gksk_users` (migration `002_users.sql`), các endpoint quản trị người dùng (`/api/users`, `/api/auth/change-password`) & kiểm tra kết nối hệ thống (`POST /api/system/check-connection`), biến `APP_LOGIN_PASSWORD` tùy chọn, lệnh CLI `npm run user:set` và hướng dẫn khắc phục lỗi đăng nhập `401` vào mục Troubleshooting `docs/DEPLOY.md` | Hoàn thiện xác thực đa người dùng trong MSSQL + dự phòng `.env` và công cụ kiểm tra kết nối Cổng Sở Y tế & Database trước khi đẩy dữ liệu thật (`CR-20261127-auth-users-system-check`) |
 | 2026-11-26 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md` | Cập nhật `ARCHITECTURE.md §7` mô tả cơ chế `helmet` tự động tắt `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` khi `ALLOW_INSECURE_COOKIE=true`; bổ sung mục **6.1 Nhật ký Sự cố Thường gặp & Cách Xử lý khi Deploy IIS Subpath / NSSM (Troubleshooting)** vào `docs/DEPLOY.md` và bỏ `NODE_ENV=production` khỏi mẫu file `.env` | Sửa dứt điểm lỗi trắng trang (`ERR_CERT_AUTHORITY_INVALID` do CSP `upgrade-insecure-requests`) trên mạng LAN HTTP và ghi nhận đầy đủ kinh nghiệm xử lý sự cố thực tế (`CR-20261126-helmet-lan-http`) |
@@ -45,6 +46,35 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [CR-20261127-restrict-system-admin] Giới hạn quyền Hệ thống & Tài khoản và Cấu hình nóng Tài khoản CSYT chỉ cho 3 tài khoản (`admin`, `thangnh`, `kienvd`), giữ chức năng Đổi mật khẩu cá nhân cho mọi người dùng — 2026-11-27 — Antigravity
+### Đã làm
+- **Tài liệu đi trước (`PROJECT-RULES.md §1.2`)**:
+  - Cập nhật `docs/ARCHITECTURE.md` (§4) và `docs/USER-GUIDE.md` (Bước 1) ghi rõ quy tắc phân quyền: chỉ 3 tài khoản `admin`, `thangnh`, `kienvd` được truy cập các tính năng Quản trị Hệ thống & Tài khoản và Cấu hình nóng Tài khoản CSYT; mọi tài khoản khác chỉ sử dụng chức năng Đổi mật khẩu cá nhân.
+- **Bảo vệ phân quyền ở tầng Backend API (`server/`)**:
+  - Bổ sung `SYSTEM_ADMIN_USERNAMES = ['admin', 'thangnh', 'kienvd']`, hàm `isSystemAdminUsername()` và middleware `createRequireSystemAdminMiddleware()` trong `server/src/middleware/requireAuth.ts`.
+  - Cập nhật `server/src/app.ts` bọc toàn bộ router `/api/users*` và `/api/system/*` dưới `requireSystemAdmin`: chỉ cho phép `admin`, `thangnh`, `kienvd` gọi; các tài khoản khác cố gọi trực tiếp sẽ bị chặn `HTTP 403 (FORBIDDEN_SYSTEM_ADMIN)`.
+  - Giữ nguyên `POST /api/auth/change-password` cho phép mọi người dùng đã đăng nhập tự đổi mật khẩu cá nhân của mình; bổ sung trường `isSystemAdmin` trong phản hồi `POST /api/auth/login` và `GET /api/auth/me`.
+- **Ẩn chức năng quản trị trên Giao diện Frontend đối với user thường (`client/`)**:
+  - Cập nhật `client/src/api/auth.ts`, `client/src/App.tsx` và `client/src/components/SystemAdminModal.tsx`:
+    - Với 3 tài khoản `admin`, `thangnh`, `kienvd`: hiển thị nút **⚙️ Hệ thống & Tài khoản** và đầy đủ 3 tab (**🔌 Kiểm tra kết nối SYT & DB** kèm **Cấu hình nóng Tài khoản CSYT**, **👥 Quản trị người dùng**, **🔑 Đổi mật khẩu của tôi**).
+    - Với các tài khoản người dùng khác: trên thanh điều hướng chỉ hiển thị nút **🔑 Đổi mật khẩu**, khi mở hộp thoại chỉ hiển thị duy nhất form **🔑 Đổi mật khẩu của tôi** (ẩn hoàn toàn tab Kiểm tra kết nối SYT, khung Cấu hình nóng Tài khoản CSYT và tab Quản trị người dùng).
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Tài liệu: `docs/ARCHITECTURE.md`, `docs/USER-GUIDE.md`, `CHANGELOG.md`.
+- Mã nguồn: `server/src/middleware/requireAuth.ts`, `server/src/routes/auth.ts`, `server/src/app.ts`, `client/src/api/auth.ts`, `client/src/App.tsx`, `client/src/components/SystemAdminModal.tsx`.
+- Kiểm thử & Bằng chứng: `server/src/routes/auth.test.ts`, `client/src/App.test.tsx`, `scripts/verify-CR-20261127-restrict-system-admin.mjs`, `docs/evidence/CR-20261127-restrict-system-admin/`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 274/274 tests (`shared`: 145, `server`: 96, `client`: 23, `mock-gksk-api`: 10).
+- `node scripts/verify-CR-20261127-restrict-system-admin.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Chỉ 3 tài khoản `admin`, `thangnh`, `kienvd` thấy và gọi được chức năng Hệ thống & Tài khoản + Cấu hình nóng Tài khoản CSYT (cả trên UI lẫn API backend).
+- ✔ Tài khoản người dùng thường bị ẩn hoàn toàn chức năng Hệ thống & Cấu hình nóng CSYT (gọi API trả `403 FORBIDDEN_SYSTEM_ADMIN`), chỉ thấy nút **🔑 Đổi mật khẩu** và đổi mật khẩu cá nhân bình thường.
+- ✔ Có đầy đủ ảnh chụp màn hình trình duyệt cho cả `thangnh`, `kienvd` và tài khoản nhân viên thường tại `docs/evidence/CR-20261127-restrict-system-admin/`.
 
 ## [CR-20261127-syt-403-diagnostic] Xử lý lỗi HTTP 403 tài khoản/mật khẩu CSYT MasterFlow: Hiển thị `res_msg` gốc, Header chuẩn Postman, Chẩn đoán 2 bước (`login` + `status`) & Cập nhật nóng `GKSK_PASSWORD`/`GKSK_SENDER_ID` trên giao diện — 2026-11-27 — Antigravity
 ### Đã làm

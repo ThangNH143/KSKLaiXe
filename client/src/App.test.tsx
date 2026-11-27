@@ -475,4 +475,87 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
       await screen.findByTestId('change-pass-notice'),
     ).toHaveTextContent('Đã cập nhật mật khẩu mới thành công.');
   });
+
+  it('5. Tài khoản nhân viên thường (không thuộc admin, thangnh, kienvd) chỉ thấy nút Đổi mật khẩu và bị ẩn hoàn toàn chức năng Hệ thống & Cấu hình nóng CSYT', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url === '/api/config') {
+        return jsonResponse(PROD_CONFIG, 200);
+      }
+      if (url === '/api/auth/me') {
+        return jsonResponse(
+          {
+            authenticated: true,
+            user: { username: 'nhanvien_khth' },
+            isSystemAdmin: false,
+            expiresAt: '2026-11-27T17:00:00.000Z',
+          },
+          200,
+        );
+      }
+      if (url === '/api/auth/change-password' && init?.method === 'POST') {
+        return jsonResponse(
+          { ok: true, message: 'Đã cập nhật mật khẩu mới thành công.' },
+          200,
+        );
+      }
+      return jsonResponse(
+        {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          counts: {
+            all: 0,
+            unsent: 0,
+            accepted: 0,
+            attention: 0,
+            ready: 0,
+            invalid: 0,
+            rejected: 0,
+            error: 0,
+            sending: 0,
+          },
+        },
+        200,
+      );
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const openBtn = await screen.findByTestId('open-system-admin-btn');
+    expect(openBtn).toHaveTextContent('🔑 Đổi mật khẩu');
+    expect(openBtn).not.toHaveTextContent('Hệ thống & Tài khoản');
+
+    fireEvent.click(openBtn);
+    expect(screen.getByTestId('system-admin-modal')).toBeInTheDocument();
+
+    // Ẩn hoàn toàn 2 tab Kiểm tra kết nối SYT & DB (kèm Cấu hình nóng CSYT) và Quản trị người dùng
+    expect(screen.queryByTestId('sys-tab-connection')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sys-tab-users')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('csyt-config-form')).not.toBeInTheDocument();
+
+    // Chỉ hiển thị duy nhất tab & form Đổi mật khẩu cá nhân
+    expect(screen.getByTestId('sys-tab-password')).toBeInTheDocument();
+    expect(screen.getByTestId('sys-panel-password')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('own-current-password-input'), {
+      target: { value: 'StaffOld123' },
+    });
+    fireEvent.change(screen.getByTestId('own-next-password-input'), {
+      target: { value: 'StaffNew456' },
+    });
+    fireEvent.change(screen.getByTestId('own-confirm-password-input'), {
+      target: { value: 'StaffNew456' },
+    });
+    fireEvent.click(screen.getByTestId('submit-change-password-btn'));
+
+    expect(
+      await screen.findByTestId('change-pass-notice'),
+    ).toHaveTextContent('Đã cập nhật mật khẩu mới thành công.');
+  });
 });

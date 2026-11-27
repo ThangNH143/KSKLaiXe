@@ -12,6 +12,7 @@ import type { AppConfig } from '../config.js';
 import { createLogger } from '../logger.js';
 import {
   CSRF_HEADER_VALUE,
+  isSystemAdminUsername,
   listExpressRoutes,
   SESSION_COOKIE_NAME,
   SESSION_TTL_MS,
@@ -652,5 +653,81 @@ describe('S12 — Xác thực ứng dụng (auth, requireAuth, CSRF, rateLimit, 
     expect(JSON.stringify(checkRes.body)).not.toContain(
       'NewCsytPass#WithHash$2026',
     );
+
+    // 10. Kiểm tra phân quyền chỉ cho 3 tài khoản (admin, thangnh, kienvd) dùng Hệ thống & Tài khoản / Cấu hình nóng CSYT;
+    //     user thường (vd: nhanvien_khth) bị chặn 403 trên /api/users* và /api/system/* nhưng vẫn đổi mật khẩu cá nhân bình thường
+    expect(isSystemAdminUsername('admin')).toBe(true);
+    expect(isSystemAdminUsername('thangnh')).toBe(true);
+    expect(isSystemAdminUsername('KIENVD')).toBe(true);
+    expect(isSystemAdminUsername('nhanvien_khth')).toBe(false);
+
+    // Tạo tài khoản quản trị thứ 3: kienvd
+    const createKienRes = await adminAgent
+      .post('/api/users')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        username: 'kienvd',
+        password: 'KienPassword@2026',
+        fullName: 'Vũ Đức Kiên',
+      });
+    expect(createKienRes.status).toBe(201);
+
+    const kienLogin = await loginAgent(app, 'kienvd', 'KienPassword@2026');
+    expect(kienLogin.res.status).toBe(200);
+    expect(kienLogin.res.body.isSystemAdmin).toBe(true);
+    const kienCfgRes = await kienLogin.agent.get('/api/system/gksk-config');
+    expect(kienCfgRes.status).toBe(200);
+
+    // Tạo tài khoản nhân viên thường: nhanvien_khth
+    const createStaffRes = await adminAgent
+      .post('/api/users')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        username: 'nhanvien_khth',
+        password: 'StaffPassword@2026',
+        fullName: 'Nhân viên KHTH',
+      });
+    expect(createStaffRes.status).toBe(201);
+
+    const staffLogin = await loginAgent(
+      app,
+      'nhanvien_khth',
+      'StaffPassword@2026',
+    );
+    expect(staffLogin.res.status).toBe(200);
+    expect(staffLogin.res.body.isSystemAdmin).toBe(false);
+
+    // User thường bị chặn 403 FORBIDDEN_SYSTEM_ADMIN trên /api/users* và /api/system/*
+    const staffGetUsers = await staffLogin.agent.get('/api/users');
+    expect(staffGetUsers.status).toBe(403);
+    expect(staffGetUsers.body.error.code).toBe('FORBIDDEN_SYSTEM_ADMIN');
+
+    const staffGetSysCfg = await staffLogin.agent.get('/api/system/gksk-config');
+    expect(staffGetSysCfg.status).toBe(403);
+    expect(staffGetSysCfg.body.error.code).toBe('FORBIDDEN_SYSTEM_ADMIN');
+
+    const staffPutSysCfg = await staffLogin.agent
+      .put('/api/system/gksk-config')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ action: 'update', username: '75009' });
+    expect(staffPutSysCfg.status).toBe(403);
+    expect(staffPutSysCfg.body.error.code).toBe('FORBIDDEN_SYSTEM_ADMIN');
+
+    const staffCheckConn = await staffLogin.agent
+      .post('/api/system/check-connection')
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
+    expect(staffCheckConn.status).toBe(403);
+    expect(staffCheckConn.body.error.code).toBe('FORBIDDEN_SYSTEM_ADMIN');
+
+    // Nhưng user thường vẫn đổi mật khẩu cá nhân của chính mình bình thường (200 OK)
+    const staffChangePass = await staffLogin.agent
+      .post('/api/auth/change-password')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        currentPassword: 'StaffPassword@2026',
+        newPassword: 'StaffNewPassword@2027',
+      });
+    expect(staffChangePass.status).toBe(200);
+    expect(staffChangePass.body.ok).toBe(true);
   });
 });

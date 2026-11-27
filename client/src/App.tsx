@@ -11,6 +11,7 @@ import {
 import {
   fetchCurrentUser,
   fetchPublicConfig,
+  isSystemAdminUsername,
   logout,
   setUnauthorizedHandler,
   type AuthUser,
@@ -35,6 +36,7 @@ function AuthenticatedShell({
 }: AuthenticatedShellProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [systemModalOpen, setSystemModalOpen] = useState(false);
+  const canAccessSystemAdmin = isSystemAdminUsername(user.username);
 
   async function handleLogoutClick() {
     setLoggingOut(true);
@@ -106,7 +108,7 @@ function AuthenticatedShell({
               onClick={() => setSystemModalOpen(true)}
               data-testid="open-system-admin-btn"
             >
-              ⚙️ Hệ thống &amp; Tài khoản
+              {canAccessSystemAdmin ? '⚙️ Hệ thống & Tài khoản' : '🔑 Đổi mật khẩu'}
             </button>
             <button
               type="button"

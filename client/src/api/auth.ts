@@ -16,7 +16,25 @@ export interface AuthUser {
 export interface AuthSessionResponse {
   authenticated: true;
   user: AuthUser;
+  isSystemAdmin?: boolean;
   expiresAt: string;
+}
+
+/**
+ * Danh sách 3 tài khoản quản trị hệ thống được phép truy cập chức năng
+ * Hệ thống & Tài khoản và Cấu hình nóng Tài khoản CSYT trên Cổng MasterFlow Sở Y tế.
+ */
+export const SYSTEM_ADMIN_USERNAMES = ['admin', 'thangnh', 'kienvd'] as const;
+
+const SYSTEM_ADMIN_SET = new Set<string>(SYSTEM_ADMIN_USERNAMES);
+
+export function isSystemAdminUsername(
+  username: string | undefined | null,
+): boolean {
+  if (typeof username !== 'string') {
+    return false;
+  }
+  return SYSTEM_ADMIN_SET.has(username.trim().toLowerCase());
 }
 
 export interface HealthResponse {

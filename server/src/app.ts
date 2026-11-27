@@ -23,6 +23,7 @@ import {
 import {
   createCsrfMiddleware,
   createRequireAuthMiddleware,
+  createRequireSystemAdminMiddleware,
   createSessionStore,
   type SessionStore,
 } from './middleware/requireAuth.js';
@@ -339,14 +340,19 @@ export function createApp(options?: CreateAppOptions): Express {
   });
 
   // Toàn bộ các route nghiệp vụ bắt buộc phải đăng nhập (401) và có CSRF header khi ghi (403)
+  const requireSystemAdmin = createRequireSystemAdminMiddleware();
   const protectedApi = Router();
   protectedApi.use(requireAuth);
   protectedApi.use(csrfMiddleware);
   protectedApi.use(createImportRouter({ importService }));
   protectedApi.use(createCertificatesRouter({ certificateService }));
   protectedApi.use(createSendRouter({ sendService, jobService }));
-  protectedApi.use(createUsersRouter({ usersRepo: repos.users, logger: log }));
-  protectedApi.use(
+
+  // Các route quản trị hệ thống & cấu hình nóng CSYT chỉ cho phép 3 tài khoản: admin, thangnh, kienvd
+  const adminOnlyApi = Router();
+  adminOnlyApi.use(requireSystemAdmin);
+  adminOnlyApi.use(createUsersRouter({ usersRepo: repos.users, logger: log }));
+  adminOnlyApi.use(
     createSystemRouter({
       repos,
       gkskClient,
@@ -357,6 +363,7 @@ export function createApp(options?: CreateAppOptions): Express {
       logger: log,
     }),
   );
+  protectedApi.use(adminOnlyApi);
 
   const apiMountPoints = subpathPrefix
     ? ['/api', `${subpathPrefix}/api`]

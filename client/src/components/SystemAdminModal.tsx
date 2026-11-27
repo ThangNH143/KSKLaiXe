@@ -4,6 +4,7 @@ import {
   changePassword,
   checkSystemConnection,
   fetchGkskConfig,
+  isSystemAdminUsername,
   listUsers,
   resetUserPassword,
   updateGkskConfig,
@@ -33,7 +34,12 @@ export function SystemAdminModal({
   currentUser,
   initialTab = 'connection',
 }: SystemAdminModalProps) {
-  const [activeTab, setActiveTab] = useState<SystemAdminTab>(initialTab);
+  const canAccessSystemAdmin = isSystemAdminUsername(currentUser.username);
+  const effectiveInitialTab: SystemAdminTab = canAccessSystemAdmin
+    ? initialTab
+    : 'password';
+  const [activeTab, setActiveTab] =
+    useState<SystemAdminTab>(effectiveInitialTab);
 
   // Tab 1: Kiểm tra kết nối Cổng Sở Y tế & Database + Cấu hình nóng tài khoản CSYT
   const [checkingConn, setCheckingConn] = useState(false);
@@ -76,9 +82,9 @@ export function SystemAdminModal({
 
   useEffect(() => {
     if (open) {
-      setActiveTab(initialTab);
+      setActiveTab(canAccessSystemAdmin ? initialTab : 'password');
     }
-  }, [open, initialTab]);
+  }, [open, initialTab, canAccessSystemAdmin]);
 
   const loadGkskConfigSummary = useCallback(async () => {
     try {
@@ -112,12 +118,15 @@ export function SystemAdminModal({
   }, []);
 
   useEffect(() => {
-    if (open && activeTab === 'connection') {
+    if (!open || !canAccessSystemAdmin) {
+      return;
+    }
+    if (activeTab === 'connection') {
       void loadGkskConfigSummary();
-    } else if (open && activeTab === 'users') {
+    } else if (activeTab === 'users') {
       void loadUserList();
     }
-  }, [open, activeTab, loadGkskConfigSummary, loadUserList]);
+  }, [open, activeTab, canAccessSystemAdmin, loadGkskConfigSummary, loadUserList]);
 
   if (!open) {
     return null;
@@ -349,7 +358,9 @@ export function SystemAdminModal({
         <div className="system-admin-header">
           <div>
             <h2 id="system-admin-modal-title" className="modal-title">
-              ⚙️ Hệ thống, Kết nối SYT &amp; Quản trị Tài khoản
+              {canAccessSystemAdmin
+                ? '⚙️ Hệ thống, Kết nối SYT & Quản trị Tài khoản'
+                : '🔑 Đổi mật khẩu tài khoản'}
             </h2>
             <p className="system-admin-subtitle">
               Tài khoản đang đăng nhập:{' '}
@@ -370,30 +381,34 @@ export function SystemAdminModal({
         </div>
 
         <div className="drawer-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'connection'}
-            className={`drawer-tab-btn ${
-              activeTab === 'connection' ? 'active' : ''
-            }`}
-            onClick={() => setActiveTab('connection')}
-            data-testid="sys-tab-connection"
-          >
-            🔌 Kiểm tra kết nối SYT &amp; DB
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'users'}
-            className={`drawer-tab-btn ${
-              activeTab === 'users' ? 'active' : ''
-            }`}
-            onClick={() => setActiveTab('users')}
-            data-testid="sys-tab-users"
-          >
-            👥 Quản trị người dùng
-          </button>
+          {canAccessSystemAdmin && (
+            <>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'connection'}
+                className={`drawer-tab-btn ${
+                  activeTab === 'connection' ? 'active' : ''
+                }`}
+                onClick={() => setActiveTab('connection')}
+                data-testid="sys-tab-connection"
+              >
+                🔌 Kiểm tra kết nối SYT &amp; DB
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'users'}
+                className={`drawer-tab-btn ${
+                  activeTab === 'users' ? 'active' : ''
+                }`}
+                onClick={() => setActiveTab('users')}
+                data-testid="sys-tab-users"
+              >
+                👥 Quản trị người dùng
+              </button>
+            </>
+          )}
           <button
             type="button"
             role="tab"
@@ -409,7 +424,7 @@ export function SystemAdminModal({
         </div>
 
         <div className="system-admin-body">
-          {activeTab === 'connection' && (
+          {canAccessSystemAdmin && activeTab === 'connection' && (
             <section
               aria-label="Kiểm tra kết nối Cổng Sở Y tế và Database"
               data-testid="sys-panel-connection"
@@ -692,7 +707,7 @@ export function SystemAdminModal({
             </section>
           )}
 
-          {activeTab === 'users' && (
+          {canAccessSystemAdmin && activeTab === 'users' && (
             <section
               aria-label="Quản trị tài khoản người dùng"
               data-testid="sys-panel-users"

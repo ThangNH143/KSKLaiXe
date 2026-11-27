@@ -17,6 +17,7 @@ import {
   type LoginRateLimiter,
 } from '../middleware/rateLimit.js';
 import {
+  isSystemAdminUsername,
   SESSION_COOKIE_NAME,
   type SessionStore,
 } from '../middleware/requireAuth.js';
@@ -196,6 +197,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
         user: {
           username: session.username,
         },
+        isSystemAdmin: isSystemAdminUsername(session.username),
         expiresAt: new Date(session.expiresAt).toISOString(),
       });
     },
@@ -240,6 +242,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
       user: {
         username: session.username,
       },
+      isSystemAdmin: isSystemAdminUsername(session.username),
       expiresAt: new Date(session.expiresAt).toISOString(),
     });
   });

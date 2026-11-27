@@ -1,0 +1,21 @@
+[2026-11-27T03:47:59.734Z] === BẮT ĐẦU KIỂM CHỨNG CR-20261127-restrict-system-admin ===
+[2026-11-27T03:47:59.735Z] --- Đang chạy: ESLint (npm run lint) (npm.cmd run lint) ---
+[2026-11-27T03:48:05.155Z] PASS: ESLint (npm run lint) hoàn tất (exit code 0)
+[2026-11-27T03:48:05.156Z] --- Đang chạy: TypeScript Typecheck (npm run typecheck) (npm.cmd run typecheck) ---
+[2026-11-27T03:48:23.890Z] PASS: TypeScript Typecheck (npm run typecheck) hoàn tất (exit code 0)
+[2026-11-27T03:48:23.890Z] --- Đang chạy: Vitest Suite (npm test) (npm.cmd test) ---
+[2026-11-27T03:48:49.193Z] PASS: Vitest Suite (npm test) hoàn tất (exit code 0)
+[2026-11-27T03:48:49.194Z] PASS: Toàn bộ 4 workspaces (145 + 96 + 23 + 10 = 274 tests) đều PASS 100%
+[2026-11-27T03:48:49.194Z] --- Đang chạy: Build Production (npm run build) (npm.cmd run build) ---
+[2026-11-27T03:48:59.820Z] PASS: Build Production (npm run build) hoàn tất (exit code 0)
+[2026-11-27T03:48:59.835Z] PASS: Mock Cổng Sở Y tế đã sẵn sàng tại http://127.0.0.1:52168
+[2026-11-27T03:49:01.720Z] PASS: Server GKSKLaiXe đã sẵn sàng
+[2026-11-27T03:49:03.763Z] PASS: Tài khoản thangnh thấy nút "⚙️ Hệ thống & Tài khoản"
+[2026-11-27T03:49:04.093Z] Đã chụp ảnh quyền quản trị của thangnh: G:\KSKLaiXe\docs\evidence\CR-20261127-restrict-system-admin\01-admin-thangnh-full-system-access.png
+[2026-11-27T03:49:05.168Z] PASS: Tài khoản kienvd thấy nút "⚙️ Hệ thống & Tài khoản"
+[2026-11-27T03:49:05.402Z] Đã chụp ảnh quyền quản trị của kienvd: G:\KSKLaiXe\docs\evidence\CR-20261127-restrict-system-admin\02-admin-kienvd-full-system-access.png
+[2026-11-27T03:49:05.886Z] PASS: Tài khoản thường nhanvien_khth chỉ thấy nút "🔑 Đổi mật khẩu" (ẩn Hệ thống & Tài khoản)
+[2026-11-27T03:49:05.975Z] PASS: Hộp thoại của user thường ẩn hoàn toàn tab Kiểm tra kết nối SYT, Cấu hình nóng CSYT và Quản trị người dùng
+[2026-11-27T03:49:06.391Z] Đã chụp ảnh giao diện của user thường (chỉ hiển thị Đổi mật khẩu cá nhân): G:\KSKLaiXe\docs\evidence\CR-20261127-restrict-system-admin\03-regular-user-only-change-password.png
+[2026-11-27T03:49:06.391Z] PASS: Trình duyệt có 0 lỗi console/pageerror
+[2026-11-27T03:49:06.621Z] === HOÀN TẤT KIỂM CHỨNG CR-20261127-restrict-system-admin: 100% PASS ===
