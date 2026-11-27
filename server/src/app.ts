@@ -350,6 +350,7 @@ export function createApp(options?: CreateAppOptions): Express {
     createSystemRouter({
       repos,
       gkskClient,
+      sendService,
       facilityId,
       facilityName,
       baseUrlHost: publicConfig.baseUrlHost,

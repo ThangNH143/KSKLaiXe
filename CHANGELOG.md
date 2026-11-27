@@ -12,6 +12,7 @@
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-27 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md` | Cập nhật `ARCHITECTURE.md §4` mô tả Chẩn đoán 2 bước trên `POST /api/system/check-connection` và endpoint `GET / PUT /api/system/gksk-config` (cập nhật nóng tài khoản/mật khẩu CSYT, tự động bọc ngoặc kép cho ký tự `#`/`$` trong `.env`, hoặc đọc lại từ `.env`); bổ sung mục **Troubleshooting #6** trong `docs/DEPLOY.md` giải thích rõ nguyên nhân và cách xử lý lỗi `HTTP 403` khi đẩy cổng MasterFlow | Xử lý dứt điểm lỗi HTTP 403 tài khoản/mật khẩu CSYT khi đổi mật khẩu trên MasterFlow hoặc sửa `.env` (`CR-20261127-syt-403-diagnostic`) |
 | 2026-11-27 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `docs/USER-GUIDE.md`, `.env.example` | Bổ sung bảng `dbo.gksk_users` (migration `002_users.sql`), các endpoint quản trị người dùng (`/api/users`, `/api/auth/change-password`) & kiểm tra kết nối hệ thống (`POST /api/system/check-connection`), biến `APP_LOGIN_PASSWORD` tùy chọn, lệnh CLI `npm run user:set` và hướng dẫn khắc phục lỗi đăng nhập `401` vào mục Troubleshooting `docs/DEPLOY.md` | Hoàn thiện xác thực đa người dùng trong MSSQL + dự phòng `.env` và công cụ kiểm tra kết nối Cổng Sở Y tế & Database trước khi đẩy dữ liệu thật (`CR-20261127-auth-users-system-check`) |
 | 2026-11-26 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md` | Cập nhật `ARCHITECTURE.md §7` mô tả cơ chế `helmet` tự động tắt `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` khi `ALLOW_INSECURE_COOKIE=true`; bổ sung mục **6.1 Nhật ký Sự cố Thường gặp & Cách Xử lý khi Deploy IIS Subpath / NSSM (Troubleshooting)** vào `docs/DEPLOY.md` và bỏ `NODE_ENV=production` khỏi mẫu file `.env` | Sửa dứt điểm lỗi trắng trang (`ERR_CERT_AUTHORITY_INVALID` do CSP `upgrade-insecure-requests`) trên mạng LAN HTTP và ghi nhận đầy đủ kinh nghiệm xử lý sự cố thực tế (`CR-20261126-helmet-lan-http`) |
 | 2026-11-26 | `docs/DEPLOY.md`, `docs/ARCHITECTURE.md`, `.env.example` | Bổ sung **Phương án 3 — Chạy dưới Subpath trên IIS có sẵn (`http://192.168.1.140/KSKLaiXe`)** với cấu hình `VITE_BASE_PATH=/KSKLaiXe`, biến `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ và cập nhật phân quyền SQL thêm `db_ddladmin` cho `gksk_app_user` | Hỗ trợ triển khai thực tế dưới Subpath của Default Web Site IIS trong mạng LAN nội bộ (`CR-20261126-iis-subpath`) |
@@ -44,6 +45,41 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [CR-20261127-syt-403-diagnostic] Xử lý lỗi HTTP 403 tài khoản/mật khẩu CSYT MasterFlow: Hiển thị `res_msg` gốc, Header chuẩn Postman, Chẩn đoán 2 bước (`login` + `status`) & Cập nhật nóng `GKSK_PASSWORD`/`GKSK_SENDER_ID` trên giao diện — 2026-11-27 — Antigravity
+### Đã làm
+- **Tài liệu đi trước (`PROJECT-RULES.md §1.2`)**:
+  - Cập nhật `docs/ARCHITECTURE.md` (§4) bổ sung mô tả Chẩn đoán 2 bước trên `POST /api/system/check-connection` và hai endpoint `GET /api/system/gksk-config`, `PUT /api/system/gksk-config`.
+  - Cập nhật `docs/DEPLOY.md` (§6.1 Troubleshooting #6) giải thích rõ 3 nguyên nhân gây lỗi `HTTP 403` khi đẩy cổng MasterFlow (`https://ksktd.dongnai.gov.vn`) và cách khắc phục ngay trên giao diện mà không cần restart NSSM.
+- **Nâng cấp `GkskClient` (`server/src/gksk/client.ts`) & `SendService` (`server/src/services/sendService.ts`)**:
+  - Bổ sung header chuẩn `Accept: '*/*'` và `User-Agent: 'PostmanRuntime/7.43.0 GKSKLaiXe/1.0'` vào cả 3 request (`login`, `pushOnce`, `status`) để tương thích 100% với Postman Collection của MasterFlow và không bị WAF chặn `User-Agent: node` bằng mã `HTTP 403`.
+  - Hiển thị nguyên văn thông điệp lỗi gốc `resMsg` (`header.res_msg` hoặc `message`) từ MasterFlow khi `POST /api/auth/login` thất bại (`Phản hồi từ cổng Sở: "..."`) thay vì ẩn mất `resMsg`.
+  - Bổ sung `gkskClient.getCredentialsSummary()`, `gkskClient.updateCredentials()` (cập nhật nóng trên RAM và xóa ngay cache token cũ) và `sendService.getSenderConfig()`, `sendService.updateSenderConfig()`.
+- **Nâng cấp API `/api/system/*` (`server/src/routes/system.ts`)**:
+  - `GET /api/system/gksk-config`: Trả về cấu hình kết nối CSYT hiện tại (`baseUrl`, `username`, `facilityId`, `senderId`, `hasPassword`, `passwordLength` — tuyệt đối không trả mật khẩu).
+  - `PUT /api/system/gksk-config`: Cho phép cập nhật nóng `GKSK_USERNAME`, `GKSK_PASSWORD`, `GKSK_SENDER_ID`, `GKSK_BASE_URL` ngay trên RAM + tự động ghi vào file `.env` với hàm `formatSafeDotenvValue()` (bọc dấu ngoặc kép `"..."` khi mật khẩu có ký tự `#`, `$` để `dotenv` không bao giờ cắt cụt phần sau dấu `#`), hoặc đọc lại trực tiếp từ file `.env` trên máy chủ (`action: 'reload_env'`).
+  - `POST /api/system/check-connection`: Nâng cấp lên **Chẩn đoán 2 bước**:
+    1. **Bước 1 (`POST /api/auth/login`)**: Kiểm tra đăng nhập lấy Bearer Token (`forceRefresh: true`), trả rõ `httpStatus`, `resCode`, `resMsg`.
+    2. **Bước 2 (`GET /api/platform/gksk-lai-xe/status?msg_id=<probe>`)**: Khi Bước 1 thành công, thử gọi endpoint GKSK với mã `sender_id` hiện tại để phân biệt chính xác 100% giữa lỗi sai mật khẩu (Bước 1 lỗi 403) và lỗi tài khoản chưa được MasterHive cấp quyền dịch vụ `sync_gksk_lai_xe` / sai `sender_id` (Bước 1 HTTP 200 nhưng Bước 2 HTTP 403 `CM_PERMISSION_DENY`).
+- **Cập nhật Giao diện `SystemAdminModal.tsx` (`client/src/components/SystemAdminModal.tsx`)**:
+  - Bổ sung biểu mẫu **🏥 Cấu hình nóng Tài khoản CSYT trên Cổng MasterFlow Sở Y tế** ngay trong tab **🔌 Kiểm tra kết nối SYT & DB** với nút **💾 Lưu cấu hình CSYT & Kiểm tra ngay** và **🔄 Đọc lại file .env trên máy chủ**, kèm hiển thị chi tiết kết quả Chẩn đoán Bước 1 & Bước 2.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Tài liệu: `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `CHANGELOG.md`.
+- Mã nguồn: `server/src/gksk/client.ts`, `server/src/services/sendService.ts`, `server/src/routes/system.ts`, `server/src/app.ts`, `client/src/api/system.ts`, `client/src/components/SystemAdminModal.tsx`, `client/src/App.css`.
+- Kiểm thử & Bằng chứng: `server/src/gksk/client.test.ts`, `server/src/routes/auth.test.ts`, `client/src/App.test.tsx`, `scripts/verify-CR-20261127-syt-403-diagnostic.mjs`, `docs/evidence/CR-20261127-syt-403-diagnostic/`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 273/273 tests (`shared`: 145, `server`: 96, `client`: 22, `mock-gksk-api`: 10).
+- `node scripts/verify-CR-20261127-syt-403-diagnostic.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Không xung đột với `API-CONTRACT.md`, `DATA-SPEC.md`, `ARCHITECTURE.md` và `PROJECT-RULES.md §3`.
+- ✔ Hiển thị nguyên văn `res_code` và `res_msg` từ MasterFlow, không bao giờ lộ mật khẩu hay Bearer token.
+- ✔ Cập nhật nóng mật khẩu CSYT (kể cả mật khẩu có ký tự `#`, `$`) ngay trên giao diện web hoặc đọc lại `.env` mà không cần restart NSSM.
+- ✔ Có đầy đủ ảnh chụp màn hình trình duyệt và biên bản kiểm chứng tại `docs/evidence/CR-20261127-syt-403-diagnostic/`.
 
 ## [CR-20261127-auth-users-system-check] Bổ sung bảng `dbo.gksk_users`, xác thực kết hợp DB + `.env`, CLI `npm run user:set`, Quản trị người dùng, Đổi mật khẩu & Kiểm tra kết nối Cổng Sở Y tế / Database — 2026-11-27 — Antigravity
 ### Đã làm

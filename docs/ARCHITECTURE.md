@@ -82,7 +82,8 @@ Tất cả dưới `/api`, JSON, trừ các endpoint tải file (`.xml`, `.zip`,
 | POST | `/api/auth/login` · `/api/auth/logout` · GET `/api/auth/me` · POST `/api/auth/change-password` | Đăng nhập ứng dụng (xác thực kết hợp bảng `dbo.gksk_users` + tài khoản dự phòng `.env`, cookie `httpOnly`, `sameSite=lax`), đổi mật khẩu cá nhân |
 | GET · POST | `/api/users` | Danh sách tài khoản nội bộ trong `dbo.gksk_users` (không trả `password_hash`) · Thêm mới hoặc cập nhật tài khoản |
 | PATCH | `/api/users/:id/password` · `/api/users/:id/status` | Đặt lại mật khẩu cho nhân viên · Khóa / Mở khóa tài khoản (`isActive`, chống tự khóa chính mình) |
-| POST | `/api/system/check-connection` | Kiểm tra trực tiếp kết nối CSDL MSSQL (5 bảng `gksk_*`) và đăng nhập thử tài khoản CSYT lên Cổng Sở Y tế (`forceRefresh: true`, **không** trả về token/mật khẩu) |
+| POST | `/api/system/check-connection` | Chẩn đoán kết nối 2 bước: (1) Kiểm tra CSDL MSSQL (5 bảng `gksk_*`), (2) Kiểm tra xác thực tài khoản CSYT `POST /api/auth/login` (`forceRefresh: true`) và kiểm tra quyền truy cập API GKSK `GET /api/platform/gksk-lai-xe/status` (**không** trả về token/mật khẩu) |
+| GET · PUT | `/api/system/gksk-config` | Xem thông tin cấu hình kết nối CSYT hiện tại (`baseUrl`, `username`, `facilityId`, `facilityName`, `senderId`, `hasPassword`, **không** trả mật khẩu) · Cập nhật nóng cấu hình tài khoản CSYT trên bộ nhớ server & đồng bộ file `.env` (bọc ngoặc kép an toàn cho mật khẩu có ký tự `#`, `$`), hoặc đọc lại từ `.env` |
 | GET | `/api/import/template` | Tải `GKSK_mau_nhap_lieu.xlsx` |
 | POST | `/api/import/excel` | `multipart/form-data` (`file`) → bản xem trước từng dòng + trạng thái đối chiếu `SO` với DB (`new`, `overwrite_pending`, `accepted_unchanged`, `accepted_modified`) |
 | POST | `/api/import/commit` | Body `{filename, rows[]}` → lưu/ghi đè các dòng được chọn (cả dòng `ready` lẫn dòng `invalid` có `SO`) vào DB |

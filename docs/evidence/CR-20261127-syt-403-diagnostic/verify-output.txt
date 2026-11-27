@@ -1,0 +1,18 @@
+[2026-11-27T03:05:11.798Z] === BẮT ĐẦU KIỂM CHỨNG CR-20261127-syt-403-diagnostic ===
+[2026-11-27T03:05:11.799Z] --- Đang chạy: ESLint (npm run lint) (npm.cmd run lint) ---
+[2026-11-27T03:05:16.737Z] PASS: ESLint (npm run lint) hoàn tất (exit code 0)
+[2026-11-27T03:05:16.737Z] --- Đang chạy: TypeScript Typecheck (npm run typecheck) (npm.cmd run typecheck) ---
+[2026-11-27T03:05:32.886Z] PASS: TypeScript Typecheck (npm run typecheck) hoàn tất (exit code 0)
+[2026-11-27T03:05:32.886Z] --- Đang chạy: Vitest Suite (npm test) (npm.cmd test) ---
+[2026-11-27T03:05:57.181Z] PASS: Vitest Suite (npm test) hoàn tất (exit code 0)
+[2026-11-27T03:05:57.182Z] PASS: Toàn bộ 4 workspaces (145 + 96 + 22 + 10 = 273 tests) đều PASS 100%
+[2026-11-27T03:05:57.182Z] --- Đang chạy: Build Production (npm run build) (npm.cmd run build) ---
+[2026-11-27T03:06:06.153Z] PASS: Build Production (npm run build) hoàn tất (exit code 0)
+[2026-11-27T03:06:06.170Z] PASS: Mock Cổng Sở Y tế đã sẵn sàng tại http://127.0.0.1:52522 (CSYT 75009)
+[2026-11-27T03:06:08.047Z] PASS: Server GKSKLaiXe đã sẵn sàng
+[2026-11-27T03:06:10.017Z] PASS: Chẩn đoán Bước 1 hiển thị rõ lỗi tại POST /api/auth/login kèm nguyên văn res_msg từ cổng Sở
+[2026-11-27T03:06:10.195Z] Đã chụp ảnh Chẩn đoán Bước 1 khi sai mật khẩu CSYT: G:\KSKLaiXe\docs\evidence\CR-20261127-syt-403-diagnostic\01-diagnostic-step1-login-fail-resmsg.png
+[2026-11-27T03:06:10.310Z] PASS: Sau khi cập nhật nóng mật khẩu CSYT mới trên giao diện, cả Bước 1 (Login) và Bước 2 (Quyền API GKSK) đều thành công 100%
+[2026-11-27T03:06:10.427Z] Đã chụp ảnh Cập nhật nóng mật khẩu CSYT & Chẩn đoán 2 bước thành công: G:\KSKLaiXe\docs\evidence\CR-20261127-syt-403-diagnostic\02-hot-update-csyt-password-and-2step-ok.png
+[2026-11-27T03:06:10.428Z] PASS: Trình duyệt có 0 lỗi console/pageerror
+[2026-11-27T03:06:10.610Z] === HOÀN TẤT KIỂM CHỨNG CR-20261127-syt-403-diagnostic: 100% PASS ===

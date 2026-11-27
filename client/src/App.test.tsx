@@ -265,6 +265,45 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
           200,
         );
       }
+      if (url === '/api/system/gksk-config' && (!init?.method || init.method === 'GET')) {
+        return jsonResponse(
+          {
+            config: {
+              baseUrl: 'https://ksktd.dongnai.gov.vn',
+              baseUrlHost: 'ksktd.dongnai.gov.vn',
+              username: '75009',
+              facilityId: '75009',
+              facilityName: 'BENH VIEN DA KHOA KHU VUC LONG KHANH',
+              senderId: '75009',
+              hasPassword: true,
+              passwordLength: 14,
+            },
+          },
+          200,
+        );
+      }
+      if (url === '/api/system/gksk-config' && init?.method === 'PUT') {
+        return jsonResponse(
+          {
+            ok: true,
+            reloadedFromEnv: false,
+            envPersisted: true,
+            config: {
+              baseUrl: 'https://ksktd.dongnai.gov.vn',
+              baseUrlHost: 'ksktd.dongnai.gov.vn',
+              username: '75009',
+              facilityId: '75009',
+              facilityName: 'BENH VIEN DA KHOA KHU VUC LONG KHANH',
+              senderId: '75009',
+              hasPassword: true,
+              passwordLength: 16,
+            },
+            message:
+              'Đã cập nhật nóng cấu hình CSYT (Tài khoản: 75009, sender_id: 75009, mật khẩu mới: 16 ký tự) và lưu an toàn vào file .env.',
+          },
+          200,
+        );
+      }
       if (url === '/api/system/check-connection') {
         return jsonResponse(
           {
@@ -289,13 +328,34 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
               ok: true,
               facilityId: '75009',
               facilityName: 'BENH VIEN DA KHOA KHU VUC LONG KHANH',
+              username: '75009',
+              senderId: '75009',
               baseUrlHost: 'ksktd.dongnai.gov.vn',
               httpStatus: 200,
               resCode: 'CM_SUCCESS',
+              resMsg: 'Đăng nhập thành công',
               durationMinutes: 720,
               expiresAt: '2026-11-27T14:00:00.000Z',
               message:
                 'Đăng nhập tài khoản CSYT 75009 lên Cổng Sở Y tế (ksktd.dongnai.gov.vn) thành công (hiệu lực token 720 phút).',
+              loginStep: {
+                ok: true,
+                endpoint: 'POST /api/auth/login',
+                httpStatus: 200,
+                resCode: 'CM_SUCCESS',
+                resMsg: 'Đăng nhập thành công',
+                message:
+                  'Bước 1 (Đăng nhập CSYT "75009"): Thành công HTTP 200 (CM_SUCCESS), cấp Bearer Token hiệu lực 720 phút.',
+              },
+              apiPermissionStep: {
+                ok: true,
+                endpoint: 'GET /api/platform/gksk-lai-xe/status',
+                httpStatus: 404,
+                resCode: 'CM_INVALID_REQUEST',
+                resMsg: 'Không tìm thấy gói tin GKSK lái xe với msg_id này.',
+                message:
+                  'Bước 2 (Quyền API GKSK Lái xe & sender_id="75009"): Hợp lệ (HTTP 404 CM_INVALID_REQUEST). Sẵn sàng đẩy giấy GKSK lái xe!',
+              },
             },
           },
           200,
@@ -359,12 +419,24 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
 
     expect(screen.getByTestId('system-admin-modal')).toBeInTheDocument();
 
-    // Tab 1: Kiểm tra kết nối SYT & DB
-    fireEvent.click(screen.getByTestId('run-connection-check-btn'));
+    // Tab 1: Kiểm tra kết nối SYT & DB + Cập nhật nóng tài khoản CSYT
+    fireEvent.change(screen.getByTestId('csyt-password-input'), {
+      target: { value: 'MasterFlow#New2026' },
+    });
+    fireEvent.click(screen.getByTestId('save-gksk-config-btn'));
+    expect(
+      await screen.findByTestId('conn-config-notice'),
+    ).toHaveTextContent('Đã cập nhật nóng cấu hình CSYT');
     const connResult = await screen.findByTestId('conn-check-result');
     expect(connResult).toHaveTextContent('Kết nối MSSQL thành công');
     expect(connResult).toHaveTextContent('75009');
     expect(connResult).toHaveTextContent('ksktd.dongnai.gov.vn');
+    expect(screen.getByTestId('conn-syt-step1')).toHaveTextContent(
+      'POST /api/auth/login',
+    );
+    expect(screen.getByTestId('conn-syt-step2')).toHaveTextContent(
+      'GET /api/platform/gksk-lai-xe/status',
+    );
 
     // Tab 2: Quản trị người dùng -> thêm user thangnh
     fireEvent.click(screen.getByTestId('sys-tab-users'));

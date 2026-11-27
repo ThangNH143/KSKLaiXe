@@ -33,6 +33,9 @@ export const TOKEN_EXPIRY_BUFFER_MS = TOKEN_EXPIRY_BUFFER_MINUTES * 60 * 1000;
 /** Giá trị header `service-type` bắt buộc khi gọi `POST /push` (API-CONTRACT.md §3). */
 export const GKSK_SERVICE_TYPE_HEADER = '100';
 
+/** Header `User-Agent` chuẩn tương thích với Postman / MasterFlow WAF. */
+export const GKSK_DEFAULT_USER_AGENT = 'PostmanRuntime/7.43.0 GKSKLaiXe/1.0';
+
 interface CachedTokenState {
   token: string;
   durationMinutes: number;
@@ -96,9 +99,9 @@ function isAbortOrTimeoutError(error: unknown, signalAborted: boolean): boolean 
  * - Thực thi chính sách retry §8 (`withRetry`) và tuyệt đối không log token / mật khẩu / PII.
  */
 export class GkskClient implements GkskRetryTarget {
-  private readonly baseUrl: string;
-  private readonly username: string;
-  private readonly password: string;
+  private baseUrl: string;
+  private username: string;
+  private password: string;
   private readonly httpTimeoutMs: number;
   private readonly privateKeyPem: string | undefined;
   private readonly nowFn: () => number;
@@ -117,6 +120,43 @@ export class GkskClient implements GkskRetryTarget {
     this.sleepFn = options.sleep ?? defaultSleep;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.log = options.logger ?? defaultLogger;
+  }
+
+  /**
+   * Trả về thông tin tóm tắt cấu hình kết nối CSYT hiện tại (tuyệt đối không trả mật khẩu).
+   */
+  public getCredentialsSummary(): {
+    baseUrl: string;
+    username: string;
+    hasPassword: boolean;
+    passwordLength: number;
+  } {
+    return {
+      baseUrl: this.baseUrl,
+      username: this.username,
+      hasPassword: this.password.length > 0,
+      passwordLength: this.password.length,
+    };
+  }
+
+  /**
+   * Cập nhật nóng thông tin kết nối/đăng nhập CSYT trên bộ nhớ tiến trình và xóa ngay cache token cũ.
+   */
+  public updateCredentials(input: {
+    baseUrl?: string;
+    username?: string;
+    password?: string;
+  }): void {
+    if (typeof input.baseUrl === 'string' && input.baseUrl.trim().length > 0) {
+      this.baseUrl = input.baseUrl.trim().replace(/\/+$/, '');
+    }
+    if (typeof input.username === 'string' && input.username.trim().length > 0) {
+      this.username = input.username.trim();
+    }
+    if (typeof input.password === 'string' && input.password.length > 0) {
+      this.password = input.password;
+    }
+    this.clearTokenCache();
   }
 
   public getNow(): number {
@@ -254,6 +294,8 @@ export class GkskClient implements GkskRetryTarget {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: '*/*',
+        'User-Agent': GKSK_DEFAULT_USER_AGENT,
       },
       body: JSON.stringify({
         username: this.username,
@@ -386,15 +428,18 @@ export class GkskClient implements GkskRetryTarget {
         username: this.username,
         httpStatus: response.status,
         resCode,
+        resMsg,
       },
       'Đăng nhập cổng GKSK thất bại (sai cấu hình tài khoản hoặc thiếu data.token)',
     );
+
+    const resMsgDetail = resMsg ? ` — Phản hồi từ cổng Sở: "${resMsg}"` : '';
 
     options?.onEvent?.({
       action: 'login_failed',
       httpStatus: response.status,
       resCode,
-      detail: `Đăng nhập thất bại HTTP ${response.status} (${resCode ?? 'NO_TOKEN'}): sai tài khoản/mật khẩu hoặc thiếu token`,
+      detail: `Đăng nhập thất bại HTTP ${response.status} (${resCode ?? 'NO_TOKEN'})${resMsgDetail}: sai tài khoản/mật khẩu hoặc thiếu token`,
     });
 
     return {
@@ -404,7 +449,7 @@ export class GkskClient implements GkskRetryTarget {
       httpStatus: response.status,
       resCode,
       resMsg,
-      message: `Đăng nhập cổng GKSK thất bại (HTTP ${response.status}${resCode ? ` ${resCode}` : ''}): vui lòng kiểm tra GKSK_USERNAME / GKSK_PASSWORD`,
+      message: `Đăng nhập cổng GKSK thất bại (HTTP ${response.status}${resCode ? ` ${resCode}` : ''})${resMsgDetail}: vui lòng kiểm tra GKSK_USERNAME / GKSK_PASSWORD`,
       retryable: false,
     };
   }
@@ -474,6 +519,8 @@ export class GkskClient implements GkskRetryTarget {
           Authorization: `Bearer ${loginRes.token}`,
           'service-type': GKSK_SERVICE_TYPE_HEADER,
           'Content-Type': 'application/json',
+          Accept: '*/*',
+          'User-Agent': GKSK_DEFAULT_USER_AGENT,
         },
         body: requestPayload,
       },
@@ -738,6 +785,8 @@ export class GkskClient implements GkskRetryTarget {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${loginRes.token}`,
+        Accept: '*/*',
+        'User-Agent': GKSK_DEFAULT_USER_AGENT,
       },
     });
 

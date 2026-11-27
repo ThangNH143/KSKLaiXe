@@ -2325,6 +2325,10 @@ dialog::backdrop {
 
 .sys-action-row {
   margin-block-end: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .conn-result-grid {

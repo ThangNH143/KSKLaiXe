@@ -184,8 +184,8 @@ function formatSafeLastError(result: Extract<GkskSendResult, { kind: 'transient'
 export class SendService {
   private readonly repos: DbRepositories;
   private readonly gkskClient: GkskClient;
-  private readonly facilityId: string;
-  private readonly senderId: string;
+  private facilityId: string;
+  private senderId: string;
   private readonly privateKeyPem: string | undefined;
   private readonly todayOverride: string | Date | undefined;
   private readonly retryOptions: Pick<WithRetryOptions, 'maxRetries' | 'retryDelaysMs'> | undefined;
@@ -203,6 +203,30 @@ export class SendService {
     this.retryOptions = options.retryOptions;
     this.nowFn = options.now ?? (() => this.gkskClient.getNow());
     this.log = options.logger ?? defaultLogger;
+  }
+
+  public getSenderConfig(): { facilityId: string; senderId: string } {
+    return {
+      facilityId: this.facilityId,
+      senderId: this.senderId,
+    };
+  }
+
+  public updateSenderConfig(input: {
+    facilityId?: string;
+    senderId?: string;
+  }): void {
+    if (
+      typeof input.facilityId === 'string' &&
+      input.facilityId.trim().length > 0
+    ) {
+      this.facilityId = input.facilityId.trim();
+    }
+    if (typeof input.senderId === 'string') {
+      const trimmedSender = input.senderId.trim();
+      this.senderId =
+        trimmedSender.length > 0 ? trimmedSender : this.facilityId;
+    }
   }
 
   /**

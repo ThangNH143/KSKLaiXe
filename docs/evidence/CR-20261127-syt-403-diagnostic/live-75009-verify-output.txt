@@ -1,0 +1,12 @@
+[2026-11-27T03:10:06.627Z] === BIÊN BẢN KIỂM TRA KẾT NỐI TRỰC TIẾP CỔNG SỞ Y TẾ ĐỒNG NAI (https://ksktd.dongnai.gov.vn) ===
+- CSYT: 75009 — BỆNH VIỆN ĐA KHOA KHU VỰC LONG KHÁNH
+- Tài khoản tích hợp (GKSK_USERNAME): 75009
+- Mã người gửi (GKSK_SENDER_ID): 75009
+- Độ dài mật khẩu đã kiểm tra: 9 ký tự (đã ẩn giá trị mật khẩu)
+- Kết quả Bước 1 (POST https://ksktd.dongnai.gov.vn/api/auth/login):
+  ✅ Bước 1 (POST /api/auth/login): Bước 1 (Đăng nhập CSYT "75009"): Thành công HTTP 200 (CM_SUCCESS), cấp Bearer Token hiệu lực 720 phút.
+- Kết quả Bước 2 (GET https://ksktd.dongnai.gov.vn/api/platform/gksk-lai-xe/status):
+  ✅ Bước 2 (GET /api/platform/gksk-lai-xe/status): Bước 2 (Quyền API GKSK Lái xe & sender_id="75009"): Hợp lệ (HTTP 404 CM_INVALID_REQUEST — "Không tìm thấy gói tin GKSK lái xe với msg_id này."). Sẵn sàng đẩy giấy GKSK lái xe!
+- Toàn bộ thông tin thẻ Cổng Sở Y tế trên giao diện:
+  🏥 Cổng Sở Y tế Đồng Nai (ksktd.dongnai.gov.vn)✅ Xác thực CSYT thành côngĐăng nhập tài khoản CSYT 75009 (sender_id=75009) lên Cổng Sở Y tế (ksktd.dongnai.gov.vn) thành công và xác nhận có quyền gọi API GKSK lái xe (hiệu lực token 720 phút).CSYT: 75009 — BỆNH VIỆN ĐA KHOA KHU VỰC LONG KHÁNH (TK đăng nhập: 75009, sender_id: 75009)Mã phản hồi: HTTP 200 (CM_SUCCESS) — "The request status returns a general success code." · Hiệu lực Token: 720 phút✅ Bước 1 (POST /api/auth/login): Bước 1 (Đăng nhập CSYT "75009"): Thành công HTTP 200 (CM_SUCCESS), cấp Bearer Token hiệu lực 720 phút.✅ Bước 2 (GET /api/platform/gksk-lai-xe/status): Bước 2 (Quyền API GKSK Lái xe & sender_id="75009"): Hợp lệ (HTTP 404 CM_INVALID_REQUEST — "Không tìm thấy gói tin GKSK lái xe với msg_id này."). Sẵn sàng đẩy giấy GKSK lái xe!
+- Ảnh chụp màn hình thực tế: g:\KSKLaiXe\docs\evidence\CR-20261127-syt-403-diagnostic\03-live-ksktd-75009-connection-verified.png

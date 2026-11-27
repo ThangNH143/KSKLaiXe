@@ -16,6 +16,10 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_TTL_MS,
 } from '../middleware/requireAuth.js';
+import {
+  formatSafeDotenvValue,
+  patchDotenvContent,
+} from './system.js';
 
 function concretePath(routePath: string): string {
   return routePath.replace(/:([a-zA-Z0-9_]+)/g, (_match, paramName: string) =>
@@ -595,7 +599,46 @@ describe('S12 — Xác thực ứng dụng (auth, requireAuth, CSRF, rateLimit, 
     );
     expect(loginAfterReset.res.status).toBe(200);
 
-    // 9. Kiểm tra kết nối POST /api/system/check-connection (không bao giờ lộ token/password)
+    // 9. Kiểm tra kết nối POST /api/system/check-connection và cấu hình nóng GET/PUT /api/system/gksk-config (không bao giờ lộ token/password)
+    const getCfgRes = await adminAgent.get('/api/system/gksk-config');
+    expect(getCfgRes.status).toBe(200);
+    expect(getCfgRes.body.config.username).toBe('75001');
+    expect(getCfgRes.body.config.hasPassword).toBe(true);
+    expect(JSON.stringify(getCfgRes.body)).not.toContain('password":');
+
+    const updateCfgRes = await adminAgent
+      .put('/api/system/gksk-config')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        action: 'update',
+        username: '75009',
+        password: 'NewCsytPass#WithHash$2026',
+        senderId: '75009',
+        persistToEnv: false,
+      });
+    expect(updateCfgRes.status).toBe(200);
+    expect(updateCfgRes.body.ok).toBe(true);
+    expect(updateCfgRes.body.config.username).toBe('75009');
+    expect(updateCfgRes.body.config.senderId).toBe('75009');
+    expect(updateCfgRes.body.config.passwordLength).toBe(
+      'NewCsytPass#WithHash$2026'.length,
+    );
+    expect(JSON.stringify(updateCfgRes.body)).not.toContain(
+      'NewCsytPass#WithHash$2026',
+    );
+
+    // Kiểm tra hàm formatSafeDotenvValue và patchDotenvContent bọc ngoặc kép an toàn cho mật khẩu chứa ký tự '#' và '$'
+    expect(formatSafeDotenvValue('Pass#123$Abc')).toBe('"Pass#123$Abc"');
+    const patchedEnv = patchDotenvContent(
+      'GKSK_USERNAME=75001\nGKSK_PASSWORD=old\n',
+      {
+        GKSK_USERNAME: '75009',
+        GKSK_PASSWORD: 'Pass#123$Abc',
+      },
+    );
+    expect(patchedEnv).toContain('GKSK_USERNAME=75009');
+    expect(patchedEnv).toContain('GKSK_PASSWORD="Pass#123$Abc"');
+
     const checkRes = await adminAgent
       .post('/api/system/check-connection')
       .set('X-Requested-With', CSRF_HEADER_VALUE);
@@ -603,6 +646,11 @@ describe('S12 — Xác thực ứng dụng (auth, requireAuth, CSRF, rateLimit, 
     expect(checkRes.body.database.ok).toBe(true);
     expect(checkRes.body.database.tables).toContain('gksk_users');
     expect(checkRes.body.database.userCount).toBe(1);
+    expect(checkRes.body.sytGateway.username).toBe('75009');
+    expect(checkRes.body.sytGateway.loginStep).toBeDefined();
     expect(JSON.stringify(checkRes.body)).not.toContain('ThangResetPassword');
+    expect(JSON.stringify(checkRes.body)).not.toContain(
+      'NewCsytPass#WithHash$2026',
+    );
   });
 });

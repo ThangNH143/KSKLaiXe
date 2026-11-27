@@ -1005,5 +1005,77 @@ describe('server/src/gksk/{client,errors,retry}.ts — S7 GKSK Client & 13 kịc
       checkStatusFirst: true,
     });
     expect(status403PushRes.kind).toBe('config');
+
+    // 5. Kiểm tra updateCredentials() cập nhật nóng tài khoản/mật khẩu CSYT, xóa cache token và hiển thị resMsg khi login 403
+    const capturedHeaders: Headers[] = [];
+    const hotUpdateClient = createGkskClient({
+      baseUrl,
+      username: '75009',
+      password: 'OldWrongPassword#123',
+      fetchImpl: async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        capturedHeaders.push(new Headers(init?.headers));
+        if (url.endsWith('/api/auth/login')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as {
+            username?: string;
+            password?: string;
+          };
+          if (
+            body.username === '75009' &&
+            body.password === 'NewMasterFlowPass#2026'
+          ) {
+            return new Response(
+              JSON.stringify({
+                header: { res_code: 'CM_SUCCESS', res_msg: 'OK' },
+                data: { token: 'new-token-75009', duration: 720 },
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              header: {
+                success: false,
+                res_code: 'CM_PERMISSION_DENY',
+                res_msg: 'Sai tài khoản hoặc mật khẩu CSYT trên MasterFlow',
+              },
+              data: null,
+            }),
+            { status: 403 },
+          );
+        }
+        return new Response('Not Found', { status: 404 });
+      },
+    });
+
+    const failLogin403 = await hotUpdateClient.login();
+    expect(failLogin403.ok).toBe(false);
+    if (!failLogin403.ok) {
+      expect(failLogin403.httpStatus).toBe(403);
+      expect(failLogin403.resCode).toBe('CM_PERMISSION_DENY');
+      expect(failLogin403.resMsg).toBe(
+        'Sai tài khoản hoặc mật khẩu CSYT trên MasterFlow',
+      );
+      expect(failLogin403.message).toContain(
+        'Sai tài khoản hoặc mật khẩu CSYT trên MasterFlow',
+      );
+      expect(failLogin403.message).not.toContain('OldWrongPassword#123');
+    }
+    expect(capturedHeaders[0]?.get('accept')).toBe('*/*');
+    expect(capturedHeaders[0]?.get('user-agent')).toContain('PostmanRuntime');
+
+    // Cập nhật nóng mật khẩu mới -> login thành công ngay lập tức
+    hotUpdateClient.updateCredentials({
+      password: 'NewMasterFlowPass#2026',
+    });
+    expect(hotUpdateClient.getCredentialsSummary()).toEqual({
+      baseUrl,
+      username: '75009',
+      hasPassword: true,
+      passwordLength: 'NewMasterFlowPass#2026'.length,
+    });
+
+    const successAfterHotUpdate = await hotUpdateClient.login();
+    expect(successAfterHotUpdate.ok).toBe(true);
   });
 });

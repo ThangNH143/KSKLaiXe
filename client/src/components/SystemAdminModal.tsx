@@ -3,11 +3,14 @@ import {
   ApiError,
   changePassword,
   checkSystemConnection,
+  fetchGkskConfig,
   listUsers,
   resetUserPassword,
+  updateGkskConfig,
   updateUserStatus,
   upsertUser,
   type AuthUser,
+  type GkskConfigSummary,
   type PublicConfig,
   type SafeUserItem,
   type SystemConnectionCheckResult,
@@ -32,11 +35,20 @@ export function SystemAdminModal({
 }: SystemAdminModalProps) {
   const [activeTab, setActiveTab] = useState<SystemAdminTab>(initialTab);
 
-  // Tab 1: Kiểm tra kết nối Cổng Sở Y tế & Database
+  // Tab 1: Kiểm tra kết nối Cổng Sở Y tế & Database + Cấu hình nóng tài khoản CSYT
   const [checkingConn, setCheckingConn] = useState(false);
   const [connResult, setConnResult] =
     useState<SystemConnectionCheckResult | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
+  const [connNotice, setConnNotice] = useState<string | null>(null);
+
+  const [gkskConfig, setGkskConfig] = useState<GkskConfigSummary | null>(null);
+  const [csytBaseUrl, setCsytBaseUrl] = useState('');
+  const [csytUsername, setCsytUsername] = useState(config?.facilityId ?? '');
+  const [csytPassword, setCsytPassword] = useState('');
+  const [showCsytPassword, setShowCsytPassword] = useState(false);
+  const [csytSenderId, setCsytSenderId] = useState(config?.facilityId ?? '');
+  const [savingCsytConfig, setSavingCsytConfig] = useState(false);
 
   // Tab 2: Quản trị người dùng
   const [users, setUsers] = useState<SafeUserItem[]>([]);
@@ -68,6 +80,20 @@ export function SystemAdminModal({
     }
   }, [open, initialTab]);
 
+  const loadGkskConfigSummary = useCallback(async () => {
+    try {
+      const res = await fetchGkskConfig();
+      if (res?.config) {
+        setGkskConfig(res.config);
+        setCsytBaseUrl(res.config.baseUrl);
+        setCsytUsername(res.config.username);
+        setCsytSenderId(res.config.senderId);
+      }
+    } catch {
+      // Bỏ qua nếu endpoint chưa được mock trong unit test cũ
+    }
+  }, []);
+
   const loadUserList = useCallback(async () => {
     setLoadingUsers(true);
     setUserError(null);
@@ -86,10 +112,12 @@ export function SystemAdminModal({
   }, []);
 
   useEffect(() => {
-    if (open && activeTab === 'users') {
+    if (open && activeTab === 'connection') {
+      void loadGkskConfigSummary();
+    } else if (open && activeTab === 'users') {
       void loadUserList();
     }
-  }, [open, activeTab, loadUserList]);
+  }, [open, activeTab, loadGkskConfigSummary, loadUserList]);
 
   if (!open) {
     return null;
@@ -109,6 +137,66 @@ export function SystemAdminModal({
       );
     } finally {
       setCheckingConn(false);
+    }
+  }
+
+  async function handleSaveCsytConfigAndCheck(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setConnError(null);
+    setConnNotice(null);
+
+    const trimmedUser = csytUsername.trim() || (config?.facilityId ?? '').trim();
+    if (!trimmedUser) {
+      setConnError('Mã tài khoản CSYT (GKSK_USERNAME) không được để trống.');
+      return;
+    }
+
+    setSavingCsytConfig(true);
+    try {
+      const res = await updateGkskConfig({
+        action: 'update',
+        baseUrl: csytBaseUrl.trim(),
+        username: trimmedUser,
+        ...(csytPassword.length > 0 ? { password: csytPassword } : {}),
+        senderId: csytSenderId.trim(),
+        persistToEnv: true,
+      });
+      setGkskConfig(res.config);
+      setCsytPassword('');
+      setConnNotice(res.message);
+      await handleCheckConnection();
+    } catch (err) {
+      setConnError(
+        err instanceof ApiError
+          ? err.message
+          : 'Không thể cập nhật cấu hình kết nối CSYT.',
+      );
+    } finally {
+      setSavingCsytConfig(false);
+    }
+  }
+
+  async function handleReloadEnvAndCheck() {
+    setConnError(null);
+    setConnNotice(null);
+    setSavingCsytConfig(true);
+    try {
+      const res = await updateGkskConfig({ action: 'reload_env' });
+      setGkskConfig(res.config);
+      setCsytBaseUrl(res.config.baseUrl);
+      setCsytUsername(res.config.username);
+      setCsytSenderId(res.config.senderId);
+      setCsytPassword('');
+      setConnNotice(res.message);
+      await handleCheckConnection();
+    } catch (err) {
+      setConnError(
+        err instanceof ApiError
+          ? err.message
+          : 'Không thể đọc lại file .env trên máy chủ.',
+      );
+    } finally {
+      setSavingCsytConfig(false);
     }
   }
 
@@ -327,28 +415,23 @@ export function SystemAdminModal({
               data-testid="sys-panel-connection"
             >
               <p className="sys-panel-desc">
-                Kiểm tra trực tiếp kết nối tới cơ sở dữ liệu MSSQL (5 bảng{' '}
-                <code>dbo.gksk_*</code>) và thử đăng nhập tài khoản CSYT lên
-                Cổng Sở Y tế Đồng Nai (
-                <code>{config?.baseUrlHost ?? 'ksktd.dongnai.gov.vn'}</code>)
-                trước khi đẩy dữ liệu thật.
+                Chẩn đoán 2 bước kết nối tới Cổng Sở Y tế Đồng Nai (
+                <code>{config?.baseUrlHost ?? 'ksktd.dongnai.gov.vn'}</code>:
+                Bước 1 <code>POST /api/auth/login</code> lấy Token → Bước 2{' '}
+                <code>GET /api/platform/gksk-lai-xe/status</code> kiểm tra quyền
+                GKSK &amp; <code>sender_id</code>) và kiểm tra 5 bảng{' '}
+                <code>dbo.gksk_*</code> trên MSSQL.
               </p>
 
-              <div className="sys-action-row">
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => {
-                    void handleCheckConnection();
-                  }}
-                  disabled={checkingConn}
-                  data-testid="run-connection-check-btn"
+              {connNotice && (
+                <div
+                  className="alert-banner alert-success"
+                  role="status"
+                  data-testid="conn-config-notice"
                 >
-                  {checkingConn
-                    ? '⏳ Đang kiểm tra kết nối...'
-                    : '🔍 Kiểm tra kết nối Cổng Sở Y tế & Database ngay'}
-                </button>
-              </div>
+                  {connNotice}
+                </div>
+              )}
 
               {connError && (
                 <div
@@ -359,6 +442,133 @@ export function SystemAdminModal({
                   {connError}
                 </div>
               )}
+
+              <form
+                className="user-create-form"
+                onSubmit={(e) => {
+                  void handleSaveCsytConfigAndCheck(e);
+                }}
+                data-testid="csyt-config-form"
+              >
+                <h3 className="sys-section-heading">
+                  🏥 Cấu hình nóng Tài khoản CSYT trên Cổng MasterFlow Sở Y tế
+                </h3>
+                <p className="sys-panel-desc" style={{ marginBottom: '0.65rem' }}>
+                  Nếu bạn vừa đổi mật khẩu trên cổng MasterFlow hoặc sửa file{' '}
+                  <code>.env</code> (lưu ý mật khẩu có ký tự <code>#</code> cần
+                  bọc ngoặc kép), bạn có thể cập nhật trực tiếp tại đây để áp
+                  dụng ngay lập tức mà <strong>không cần khởi động lại NSSM</strong>.
+                </p>
+                <div className="user-form-grid">
+                  <div className="form-field">
+                    <label htmlFor="csyt-username-input">
+                      Tài khoản CSYT (<code>GKSK_USERNAME</code>)
+                    </label>
+                    <input
+                      id="csyt-username-input"
+                      type="text"
+                      value={csytUsername}
+                      onChange={(e) => setCsytUsername(e.target.value)}
+                      placeholder={config?.facilityId ?? '75009'}
+                      disabled={savingCsytConfig || checkingConn}
+                      data-testid="csyt-username-input"
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="csyt-password-input">
+                      Mật khẩu CSYT mới (<code>GKSK_PASSWORD</code>)
+                    </label>
+                    <div className="password-input-group">
+                      <input
+                        id="csyt-password-input"
+                        type={showCsytPassword ? 'text' : 'password'}
+                        value={csytPassword}
+                        onChange={(e) => setCsytPassword(e.target.value)}
+                        placeholder={
+                          gkskConfig?.hasPassword
+                            ? `Đang lưu (${gkskConfig.passwordLength} ký tự) — nhập để đổi`
+                            : 'Nhập mật khẩu CSYT MasterFlow'
+                        }
+                        disabled={savingCsytConfig || checkingConn}
+                        data-testid="csyt-password-input"
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowCsytPassword((p) => !p)}
+                        disabled={savingCsytConfig || checkingConn}
+                      >
+                        {showCsytPassword ? 'Ẩn' : 'Hiện'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="csyt-senderid-input">
+                      Mã người gửi (<code>GKSK_SENDER_ID</code>)
+                    </label>
+                    <input
+                      id="csyt-senderid-input"
+                      type="text"
+                      value={csytSenderId}
+                      onChange={(e) => setCsytSenderId(e.target.value)}
+                      placeholder={config?.facilityId ?? '75009'}
+                      disabled={savingCsytConfig || checkingConn}
+                      data-testid="csyt-senderid-input"
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="csyt-baseurl-input">
+                      Địa chỉ Cổng (<code>GKSK_BASE_URL</code>)
+                    </label>
+                    <input
+                      id="csyt-baseurl-input"
+                      type="text"
+                      value={csytBaseUrl}
+                      onChange={(e) => setCsytBaseUrl(e.target.value)}
+                      placeholder="https://ksktd.dongnai.gov.vn"
+                      disabled={savingCsytConfig || checkingConn}
+                      data-testid="csyt-baseurl-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="sys-action-row" style={{ marginTop: '0.85rem', marginBottom: 0 }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      void handleCheckConnection();
+                    }}
+                    disabled={checkingConn || savingCsytConfig}
+                    data-testid="run-connection-check-btn"
+                  >
+                    {checkingConn
+                      ? '⏳ Đang chẩn đoán kết nối...'
+                      : '🔍 Kiểm tra kết nối Cổng Sở Y tế & Database ngay'}
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-secondary"
+                    disabled={savingCsytConfig || checkingConn}
+                    data-testid="save-gksk-config-btn"
+                  >
+                    {savingCsytConfig
+                      ? '⏳ Đang lưu...'
+                      : '💾 Lưu cấu hình CSYT & Kiểm tra ngay'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      void handleReloadEnvAndCheck();
+                    }}
+                    disabled={savingCsytConfig || checkingConn}
+                    data-testid="reload-gksk-env-btn"
+                  >
+                    🔄 Đọc lại file .env trên máy chủ
+                  </button>
+                </div>
+              </form>
 
               {connResult && (
                 <div
@@ -372,7 +582,9 @@ export function SystemAdminModal({
                     data-testid="conn-db-card"
                   >
                     <div className="conn-card-title">
-                      <span>🗄️ Cơ sở dữ liệu ({connResult.database.kind.toUpperCase()})</span>
+                      <span>
+                        🗄️ Cơ sở dữ liệu ({connResult.database.kind.toUpperCase()})
+                      </span>
                       <span
                         className={`conn-status-pill ${
                           connResult.database.ok ? 'pill-ok' : 'pill-fail'
@@ -410,7 +622,9 @@ export function SystemAdminModal({
                     data-testid="conn-syt-card"
                   >
                     <div className="conn-card-title">
-                      <span>🏥 Cổng Sở Y tế Đồng Nai ({connResult.sytGateway.baseUrlHost})</span>
+                      <span>
+                        🏥 Cổng Sở Y tế Đồng Nai ({connResult.sytGateway.baseUrlHost})
+                      </span>
                       <span
                         className={`conn-status-pill ${
                           connResult.sytGateway.ok ? 'pill-ok' : 'pill-fail'
@@ -432,6 +646,9 @@ export function SystemAdminModal({
                           {connResult.sytGateway.facilityId} —{' '}
                           {connResult.sytGateway.facilityName}
                         </strong>
+                        {connResult.sytGateway.username
+                          ? ` (TK đăng nhập: ${connResult.sytGateway.username}, sender_id: ${connResult.sytGateway.senderId ?? connResult.sytGateway.facilityId})`
+                          : ''}
                       </li>
                       <li>
                         Mã phản hồi:{' '}
@@ -439,10 +656,35 @@ export function SystemAdminModal({
                           HTTP {connResult.sytGateway.httpStatus ?? 'N/A'} (
                           {connResult.sytGateway.resCode ?? 'N/A'})
                         </strong>
+                        {connResult.sytGateway.resMsg
+                          ? ` — "${connResult.sytGateway.resMsg}"`
+                          : ''}
                         {connResult.sytGateway.durationMinutes !== null
                           ? ` · Hiệu lực Token: ${connResult.sytGateway.durationMinutes} phút`
                           : ''}
                       </li>
+                      {connResult.sytGateway.loginStep && (
+                        <li data-testid="conn-syt-step1">
+                          <strong>
+                            {connResult.sytGateway.loginStep.ok ? '✅' : '⛔'} Bước 1 (
+                            <code>{connResult.sytGateway.loginStep.endpoint}</code>):
+                          </strong>{' '}
+                          {connResult.sytGateway.loginStep.message}
+                        </li>
+                      )}
+                      {connResult.sytGateway.apiPermissionStep && (
+                        <li data-testid="conn-syt-step2">
+                          <strong>
+                            {connResult.sytGateway.apiPermissionStep.ok ? '✅' : '⛔'}{' '}
+                            Bước 2 (
+                            <code>
+                              {connResult.sytGateway.apiPermissionStep.endpoint}
+                            </code>
+                            ):
+                          </strong>{' '}
+                          {connResult.sytGateway.apiPermissionStep.message}
+                        </li>
+                      )}
                     </ul>
                   </div>
                 </div>
