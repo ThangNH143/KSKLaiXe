@@ -1,4 +1,5 @@
 import path from 'node:path';
+import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
@@ -173,11 +174,27 @@ const envSchema = z
 
     // Đăng nhập nội bộ ứng dụng
     APP_LOGIN_USER: requiredString('APP_LOGIN_USER'),
-    APP_LOGIN_PASSWORD_HASH: requiredString('APP_LOGIN_PASSWORD_HASH'),
+    APP_LOGIN_PASSWORD_HASH: z.preprocess(
+      emptyToUndefined,
+      z.string().trim().optional(),
+    ),
+    APP_LOGIN_PASSWORD: z.preprocess(
+      emptyToUndefined,
+      z.string().trim().optional(),
+    ),
     SESSION_SECRET: requiredString('SESSION_SECRET', 16),
     ALLOW_INSECURE_COOKIE: optionalBoolean('ALLOW_INSECURE_COOKIE', false),
   })
   .superRefine((data, ctx) => {
+    if (!data.APP_LOGIN_PASSWORD_HASH && !data.APP_LOGIN_PASSWORD) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_LOGIN_PASSWORD_HASH'],
+        message:
+          'Thiếu biến bắt buộc APP_LOGIN_PASSWORD_HASH (hoặc APP_LOGIN_PASSWORD)',
+      });
+    }
+
     let parsedUrl: URL | null = null;
     try {
       parsedUrl = new URL(data.GKSK_BASE_URL);
@@ -253,7 +270,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     auth: {
       loginUser: d.APP_LOGIN_USER,
-      loginPasswordHash: d.APP_LOGIN_PASSWORD_HASH,
+      loginPasswordHash:
+        d.APP_LOGIN_PASSWORD_HASH ??
+        bcrypt.hashSync(d.APP_LOGIN_PASSWORD ?? '', 10),
       sessionSecret: d.SESSION_SECRET,
       allowInsecureCookie: d.ALLOW_INSECURE_COOKIE,
     },

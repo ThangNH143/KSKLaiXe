@@ -17,6 +17,7 @@ import {
   type PublicConfig,
 } from './api';
 import { EnvBanner } from './components/EnvBanner';
+import { SystemAdminModal } from './components/SystemAdminModal';
 import { ImportPage } from './pages/ImportPage';
 import { ListPage } from './pages/ListPage';
 import { LoginPage } from './pages/LoginPage';
@@ -33,6 +34,7 @@ function AuthenticatedShell({
   onLogout,
 }: AuthenticatedShellProps) {
   const [loggingOut, setLoggingOut] = useState(false);
+  const [systemModalOpen, setSystemModalOpen] = useState(false);
 
   async function handleLogoutClick() {
     setLoggingOut(true);
@@ -100,6 +102,14 @@ function AuthenticatedShell({
             </span>
             <button
               type="button"
+              className="btn-secondary"
+              onClick={() => setSystemModalOpen(true)}
+              data-testid="open-system-admin-btn"
+            >
+              ⚙️ Hệ thống &amp; Tài khoản
+            </button>
+            <button
+              type="button"
               className="btn-ghost"
               onClick={() => {
                 void handleLogoutClick();
@@ -111,6 +121,13 @@ function AuthenticatedShell({
           </div>
         </div>
       </header>
+
+      <SystemAdminModal
+        open={systemModalOpen}
+        onClose={() => setSystemModalOpen(false)}
+        config={config}
+        currentUser={user}
+      />
 
       <main id="main-content" className="workspace-main">
         <Routes>

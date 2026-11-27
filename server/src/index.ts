@@ -30,6 +30,12 @@ async function start(): Promise<void> {
   let repos: DbRepositories;
   if (process.env.GKSK_USE_IN_MEMORY_DB === '1') {
     repos = createRepositories();
+    await repos.users.upsertByUsername({
+      username: config.auth.loginUser,
+      passwordHash: config.auth.loginPasswordHash,
+      fullName: 'Quản trị viên CSYT',
+      isActive: true,
+    });
     logger.info(
       { dbKind: repos.kind },
       'Đang sử dụng InMemoryRepositories (GKSK_USE_IN_MEMORY_DB=1)',
@@ -40,6 +46,22 @@ async function start(): Promise<void> {
       const appliedMigrations = await runMigrations(pool);
       repos = createRepositories(pool);
       const recoveredCount = await repos.certificates.recoverOnStartup();
+
+      // Tự động seed tài khoản cấu hình trong .env vào bảng dbo.gksk_users nếu chưa tồn tại
+      const existingEnvUser = await repos.users.findByUsername(
+        config.auth.loginUser,
+      );
+      let seededDefaultUser = false;
+      if (!existingEnvUser) {
+        await repos.users.upsertByUsername({
+          username: config.auth.loginUser,
+          passwordHash: config.auth.loginPasswordHash,
+          fullName: 'Quản trị viên CSYT',
+          isActive: true,
+        });
+        seededDefaultUser = true;
+      }
+
       logger.info(
         {
           dbKind: repos.kind,
@@ -48,8 +70,10 @@ async function start(): Promise<void> {
           dbName: config.db.name,
           appliedMigrations,
           recoveredStuckSendingCount: recoveredCount,
+          seededDefaultUser,
+          defaultLoginUser: config.auth.loginUser,
         },
-        'Đã kết nối MSSQL và khởi tạo an toàn 4 bảng gksk_*',
+        'Đã kết nối MSSQL và khởi tạo an toàn 5 bảng gksk_*',
       );
     } catch (err) {
       logger.error(

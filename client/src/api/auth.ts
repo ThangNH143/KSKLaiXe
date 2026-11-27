@@ -61,3 +61,16 @@ export function logout(): Promise<{ ok: boolean }> {
     skipUnauthorizedHandler: true,
   });
 }
+
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: boolean; message: string }> {
+  return apiRequest<{ ok: boolean; message: string }>(
+    '/api/auth/change-password',
+    {
+      method: 'POST',
+      body: { currentPassword, newPassword },
+    },
+  );
+}

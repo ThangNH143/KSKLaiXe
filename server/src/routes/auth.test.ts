@@ -80,8 +80,8 @@ describe('S12 — Xác thực ứng dụng (auth, requireAuth, CSRF, rateLimit, 
     );
 
     expect(publicRoutes).toHaveLength(2);
-    expect(authRoutes).toHaveLength(3);
-    expect(businessRoutes.length).toBeGreaterThanOrEqual(15);
+    expect(authRoutes).toHaveLength(4);
+    expect(businessRoutes.length).toBeGreaterThanOrEqual(19);
 
     // Các route công khai (health, config) truy cập được không cần đăng nhập
     for (const route of publicRoutes) {
@@ -477,5 +477,132 @@ describe('S12 — Xác thực ứng dụng (auth, requireAuth, CSRF, rateLimit, 
     expect(rawLogs).not.toContain(passwordHash);
     expect(rawLogs).not.toContain('SUPER_SECRET_SESSION_KEY_789');
     expect(rawLogs).not.toContain(SESSION_COOKIE_NAME);
+  });
+
+  it('6. Quản trị người dùng (dbo.gksk_users), đăng nhập kết hợp DB + .env fallback, đổi mật khẩu cá nhân, khóa user và Kiểm tra kết nối SYT/Database', async () => {
+    const app = createApp();
+
+    // 1. Đăng nhập bằng tài khoản dự phòng .env (admin)
+    const { agent: adminAgent, res: adminLogin } = await loginAgent(app);
+    expect(adminLogin.status).toBe(200);
+
+    // 2. Tạo tài khoản mới "thangnh" qua POST /api/users
+    const createRes = await adminAgent
+      .post('/api/users')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        username: 'thangnh',
+        password: 'ThangPassword@2026',
+        fullName: 'Nguyễn Hoàng Thắng',
+      });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.created).toBe(true);
+    expect(createRes.body.user.username).toBe('thangnh');
+    expect(createRes.body.user.fullName).toBe('Nguyễn Hoàng Thắng');
+    expect(createRes.body.user.isActive).toBe(true);
+    expect(createRes.body.user.passwordHash).toBeUndefined();
+
+    // 3. Lấy danh sách user qua GET /api/users (không bao giờ trả passwordHash)
+    const listRes = await adminAgent.get('/api/users');
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.items).toHaveLength(1);
+    expect(listRes.body.items[0].username).toBe('thangnh');
+    expect(JSON.stringify(listRes.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(listRes.body)).not.toContain('ThangPassword@2026');
+
+    // 4. Đăng nhập bằng tài khoản "thangnh" vừa tạo trong DB
+    const { agent: thangAgent, res: thangLogin } = await loginAgent(
+      app,
+      'thangnh',
+      'ThangPassword@2026',
+    );
+    expect(thangLogin.status).toBe(200);
+    expect(thangLogin.body.user).toEqual({ username: 'thangnh' });
+
+    // 5. Người dùng "thangnh" tự đổi mật khẩu qua POST /api/auth/change-password
+    const wrongCurrentRes = await thangAgent
+      .post('/api/auth/change-password')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        currentPassword: 'WrongOldPassword',
+        newPassword: 'ThangNewPassword@2027',
+      });
+    expect(wrongCurrentRes.status).toBe(400);
+    expect(wrongCurrentRes.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
+
+    const changePassRes = await thangAgent
+      .post('/api/auth/change-password')
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({
+        currentPassword: 'ThangPassword@2026',
+        newPassword: 'ThangNewPassword@2027',
+      });
+    expect(changePassRes.status).toBe(200);
+    expect(changePassRes.body.ok).toBe(true);
+
+    // Đăng nhập lại với mật khẩu cũ -> 401; mật khẩu mới -> 200
+    const loginOldPass = await loginAgent(app, 'thangnh', 'ThangPassword@2026');
+    expect(loginOldPass.res.status).toBe(401);
+
+    const loginNewPass = await loginAgent(
+      app,
+      'thangnh',
+      'ThangNewPassword@2027',
+    );
+    expect(loginNewPass.res.status).toBe(200);
+
+    // 6. Chống tự khóa tài khoản đang đăng nhập của chính mình
+    const thangId = createRes.body.user.id as number;
+    const selfDisableRes = await loginNewPass.agent
+      .patch(`/api/users/${thangId}/status`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ isActive: false });
+    expect(selfDisableRes.status).toBe(400);
+    expect(selfDisableRes.body.error.code).toBe('CANNOT_DISABLE_SELF');
+
+    // 7. Admin khóa tài khoản "thangnh" -> "thangnh" không thể đăng nhập nữa
+    const disableRes = await adminAgent
+      .patch(`/api/users/${thangId}/status`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ isActive: false });
+    expect(disableRes.status).toBe(200);
+    expect(disableRes.body.user.isActive).toBe(false);
+
+    const loginDisabled = await loginAgent(
+      app,
+      'thangnh',
+      'ThangNewPassword@2027',
+    );
+    expect(loginDisabled.res.status).toBe(401);
+    expect(loginDisabled.res.body.error.message).toContain('đã bị khóa');
+
+    // 8. Admin mở khóa và đặt lại mật khẩu cho "thangnh"
+    await adminAgent
+      .patch(`/api/users/${thangId}/status`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ isActive: true });
+
+    const resetRes = await adminAgent
+      .patch(`/api/users/${thangId}/password`)
+      .set('X-Requested-With', CSRF_HEADER_VALUE)
+      .send({ newPassword: 'ThangResetPassword@2028' });
+    expect(resetRes.status).toBe(200);
+
+    const loginAfterReset = await loginAgent(
+      app,
+      'thangnh',
+      'ThangResetPassword@2028',
+    );
+    expect(loginAfterReset.res.status).toBe(200);
+
+    // 9. Kiểm tra kết nối POST /api/system/check-connection (không bao giờ lộ token/password)
+    const checkRes = await adminAgent
+      .post('/api/system/check-connection')
+      .set('X-Requested-With', CSRF_HEADER_VALUE);
+    expect(checkRes.status).toBe(200);
+    expect(checkRes.body.database.ok).toBe(true);
+    expect(checkRes.body.database.tables).toContain('gksk_users');
+    expect(checkRes.body.database.userCount).toBe(1);
+    expect(JSON.stringify(checkRes.body)).not.toContain('ThangResetPassword');
   });
 });

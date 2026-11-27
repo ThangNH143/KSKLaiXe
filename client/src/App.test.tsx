@@ -237,4 +237,170 @@ describe('S13 — EnvBanner, LoginPage và khung ứng dụng (App Shell)', () =
     );
     expect(screen.getByTestId('prod-env-banner')).toBeInTheDocument();
   });
+
+  it('4. Hộp thoại Hệ thống & Tài khoản (SystemAdminModal): Kiểm tra kết nối SYT/Database, Quản trị người dùng và Đổi mật khẩu cá nhân', async () => {
+    const usersStore = [
+      {
+        id: 1,
+        username: 'admin',
+        fullName: 'Quản trị viên CSYT',
+        isActive: true,
+        createdAt: '2026-11-27T01:00:00.000Z',
+        updatedAt: '2026-11-27T01:00:00.000Z',
+      },
+    ];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url === '/api/config') {
+        return jsonResponse(PROD_CONFIG, 200);
+      }
+      if (url === '/api/auth/me') {
+        return jsonResponse(
+          {
+            authenticated: true,
+            user: { username: 'admin' },
+            expiresAt: '2026-11-27T17:00:00.000Z',
+          },
+          200,
+        );
+      }
+      if (url === '/api/system/check-connection') {
+        return jsonResponse(
+          {
+            ok: true,
+            checkedAt: '2026-11-27T02:00:00.000Z',
+            database: {
+              ok: true,
+              kind: 'mssql',
+              tables: [
+                'gksk_schema_migrations',
+                'gksk_import_batches',
+                'gksk_certificates',
+                'gksk_submissions',
+                'gksk_users',
+              ],
+              userCount: usersStore.length,
+              batchCount: 2,
+              certificateCount: 15,
+              message: 'Kết nối MSSQL thành công (5 bảng gksk_* sẵn sàng).',
+            },
+            sytGateway: {
+              ok: true,
+              facilityId: '75009',
+              facilityName: 'BENH VIEN DA KHOA KHU VUC LONG KHANH',
+              baseUrlHost: 'ksktd.dongnai.gov.vn',
+              httpStatus: 200,
+              resCode: 'CM_SUCCESS',
+              durationMinutes: 720,
+              expiresAt: '2026-11-27T14:00:00.000Z',
+              message:
+                'Đăng nhập tài khoản CSYT 75009 lên Cổng Sở Y tế (ksktd.dongnai.gov.vn) thành công (hiệu lực token 720 phút).',
+            },
+          },
+          200,
+        );
+      }
+      if (url === '/api/users' && (!init?.method || init.method === 'GET')) {
+        return jsonResponse({ items: usersStore }, 200);
+      }
+      if (url === '/api/users' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}')) as {
+          username: string;
+          fullName?: string;
+        };
+        const newUser = {
+          id: usersStore.length + 1,
+          username: body.username,
+          fullName: body.fullName ?? '',
+          isActive: true,
+          createdAt: '2026-11-27T02:01:00.000Z',
+          updatedAt: '2026-11-27T02:01:00.000Z',
+        };
+        usersStore.push(newUser);
+        return jsonResponse({ user: newUser, created: true }, 201);
+      }
+      if (url === '/api/auth/change-password' && init?.method === 'POST') {
+        return jsonResponse(
+          { ok: true, message: 'Đã cập nhật mật khẩu mới thành công.' },
+          200,
+        );
+      }
+      return jsonResponse(
+        {
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          counts: {
+            all: 0,
+            unsent: 0,
+            accepted: 0,
+            attention: 0,
+            ready: 0,
+            invalid: 0,
+            rejected: 0,
+            error: 0,
+            sending: 0,
+          },
+        },
+        200,
+      );
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const openBtn = await screen.findByTestId('open-system-admin-btn');
+    fireEvent.click(openBtn);
+
+    expect(screen.getByTestId('system-admin-modal')).toBeInTheDocument();
+
+    // Tab 1: Kiểm tra kết nối SYT & DB
+    fireEvent.click(screen.getByTestId('run-connection-check-btn'));
+    const connResult = await screen.findByTestId('conn-check-result');
+    expect(connResult).toHaveTextContent('Kết nối MSSQL thành công');
+    expect(connResult).toHaveTextContent('75009');
+    expect(connResult).toHaveTextContent('ksktd.dongnai.gov.vn');
+
+    // Tab 2: Quản trị người dùng -> thêm user thangnh
+    fireEvent.click(screen.getByTestId('sys-tab-users'));
+    await screen.findByTestId('users-table');
+
+    fireEvent.change(screen.getByTestId('new-user-username-input'), {
+      target: { value: 'thangnh' },
+    });
+    fireEvent.change(screen.getByTestId('new-user-fullname-input'), {
+      target: { value: 'Nguyễn Hoàng Thắng' },
+    });
+    fireEvent.change(screen.getByTestId('new-user-password-input'), {
+      target: { value: 'Thang@2026' },
+    });
+    fireEvent.click(screen.getByTestId('save-user-btn'));
+
+    expect(
+      await screen.findByTestId('user-admin-notice'),
+    ).toHaveTextContent('thangnh');
+    expect(screen.getByTestId('user-row-thangnh')).toBeInTheDocument();
+
+    // Tab 3: Đổi mật khẩu cá nhân
+    fireEvent.click(screen.getByTestId('sys-tab-password'));
+    fireEvent.change(screen.getByTestId('own-current-password-input'), {
+      target: { value: 'OldPass123' },
+    });
+    fireEvent.change(screen.getByTestId('own-next-password-input'), {
+      target: { value: 'NewPass456' },
+    });
+    fireEvent.change(screen.getByTestId('own-confirm-password-input'), {
+      target: { value: 'NewPass456' },
+    });
+    fireEvent.click(screen.getByTestId('submit-change-password-btn'));
+
+    expect(
+      await screen.findByTestId('change-pass-notice'),
+    ).toHaveTextContent('Đã cập nhật mật khẩu mới thành công.');
+  });
 });

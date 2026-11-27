@@ -8,6 +8,7 @@ import {
   parseFieldsJson,
   parseServerIssuesJson,
   toIsoTimestamp,
+  toSafeUserRow,
 } from './inMemoryRepo.js';
 import type {
   BatchesRepository,
@@ -21,13 +22,39 @@ import type {
   DbRepositories,
   ImportBatchRow,
   ReconcileCounts,
+  SafeUserRow,
   SubmissionRow,
   SubmissionsRepository,
   UpdateCertificateStatusInput,
   UpdateSubmissionInput,
   UpsertCertificateInput,
   UpsertCertificateResult,
+  UpsertUserInput,
+  UserRow,
+  UsersRepository,
 } from './types.js';
+
+interface RawUserRecord {
+  id: number;
+  username: string;
+  password_hash: string;
+  full_name: string;
+  is_active: boolean | number;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+function mapRawUserRow(raw: RawUserRecord): UserRow {
+  return {
+    id: Number(raw.id),
+    username: raw.username,
+    passwordHash: raw.password_hash,
+    fullName: raw.full_name ?? '',
+    isActive: Boolean(raw.is_active),
+    createdAt: toIsoTimestamp(raw.created_at),
+    updatedAt: toIsoTimestamp(raw.updated_at),
+  };
+}
 
 interface RawBatchRecord {
   id: number;
@@ -165,11 +192,193 @@ export class MssqlRepositories implements DbRepositories {
   public readonly batches: BatchesRepository;
   public readonly certificates: CertificatesRepository;
   public readonly submissions: SubmissionsRepository;
+  public readonly users: UsersRepository;
 
   private readonly pool: sql.ConnectionPool;
 
   constructor(pool: sql.ConnectionPool) {
     this.pool = pool;
+
+    this.users = {
+      findByUsername: async (username: string): Promise<UserRow | null> => {
+        const cleanUsername = username.trim();
+        if (!cleanUsername) {
+          return null;
+        }
+        const result = await this.pool
+          .request()
+          .input('username', sql.NVarChar(64), cleanUsername)
+          .query<RawUserRecord>(
+            `
+            SELECT id, username, password_hash, full_name, is_active, created_at, updated_at
+            FROM dbo.gksk_users
+            WHERE username = @username;
+            `,
+          );
+        const row = result.recordset[0];
+        return row ? mapRawUserRow(row) : null;
+      },
+
+      findById: async (id: number): Promise<UserRow | null> => {
+        const result = await this.pool
+          .request()
+          .input('id', sql.Int, id)
+          .query<RawUserRecord>(
+            `
+            SELECT id, username, password_hash, full_name, is_active, created_at, updated_at
+            FROM dbo.gksk_users
+            WHERE id = @id;
+            `,
+          );
+        const row = result.recordset[0];
+        return row ? mapRawUserRow(row) : null;
+      },
+
+      list: async (): Promise<SafeUserRow[]> => {
+        const result = await this.pool.request().query<RawUserRecord>(
+          `
+          SELECT id, username, password_hash, full_name, is_active, created_at, updated_at
+          FROM dbo.gksk_users
+          ORDER BY id ASC;
+          `,
+        );
+        return result.recordset.map((raw) => toSafeUserRow(mapRawUserRow(raw)));
+      },
+
+      upsertByUsername: async (
+        input: UpsertUserInput,
+      ): Promise<{ row: SafeUserRow; created: boolean }> => {
+        const cleanUsername = input.username.trim();
+        if (!cleanUsername) {
+          throw new Error('Tên đăng nhập (username) không được để trống.');
+        }
+
+        const nowDate = new Date(toIsoTimestamp(input.now));
+        const existing = await this.users.findByUsername(cleanUsername);
+
+        if (existing) {
+          const nextFullName =
+            input.fullName !== undefined ? input.fullName.trim() : existing.fullName;
+          const nextIsActive =
+            input.isActive !== undefined ? input.isActive : existing.isActive;
+
+          const result = await this.pool
+            .request()
+            .input('id', sql.Int, existing.id)
+            .input('passwordHash', sql.NVarChar(255), input.passwordHash)
+            .input('fullName', sql.NVarChar(128), nextFullName)
+            .input('isActive', sql.Bit, nextIsActive)
+            .input('updatedAt', sql.DateTime2, nowDate)
+            .query<RawUserRecord>(
+              `
+              UPDATE dbo.gksk_users
+              SET password_hash = @passwordHash,
+                  full_name = @fullName,
+                  is_active = @isActive,
+                  updated_at = @updatedAt
+              OUTPUT INSERTED.id, INSERTED.username, INSERTED.password_hash, INSERTED.full_name, INSERTED.is_active, INSERTED.created_at, INSERTED.updated_at
+              WHERE id = @id;
+              `,
+            );
+
+          const updatedRaw = result.recordset[0];
+          if (!updatedRaw) {
+            throw new Error('Không tìm thấy bản ghi sau khi cập nhật dbo.gksk_users.');
+          }
+          return {
+            row: toSafeUserRow(mapRawUserRow(updatedRaw)),
+            created: false,
+          };
+        }
+
+        const insertResult = await this.pool
+          .request()
+          .input('username', sql.NVarChar(64), cleanUsername)
+          .input('passwordHash', sql.NVarChar(255), input.passwordHash)
+          .input('fullName', sql.NVarChar(128), (input.fullName ?? '').trim())
+          .input('isActive', sql.Bit, input.isActive ?? true)
+          .input('createdAt', sql.DateTime2, nowDate)
+          .input('updatedAt', sql.DateTime2, nowDate)
+          .query<RawUserRecord>(
+            `
+            INSERT INTO dbo.gksk_users (
+              username,
+              password_hash,
+              full_name,
+              is_active,
+              created_at,
+              updated_at
+            )
+            OUTPUT INSERTED.id, INSERTED.username, INSERTED.password_hash, INSERTED.full_name, INSERTED.is_active, INSERTED.created_at, INSERTED.updated_at
+            VALUES (
+              @username,
+              @passwordHash,
+              @fullName,
+              @isActive,
+              @createdAt,
+              @updatedAt
+            );
+            `,
+          );
+
+        const createdRaw = insertResult.recordset[0];
+        if (!createdRaw) {
+          throw new Error('Không thể thêm mới bản ghi vào dbo.gksk_users.');
+        }
+        return {
+          row: toSafeUserRow(mapRawUserRow(createdRaw)),
+          created: true,
+        };
+      },
+
+      updatePassword: async (
+        id: number,
+        passwordHash: string,
+        now?: string | Date,
+      ): Promise<SafeUserRow | null> => {
+        const updatedAt = new Date(toIsoTimestamp(now));
+        const result = await this.pool
+          .request()
+          .input('id', sql.Int, id)
+          .input('passwordHash', sql.NVarChar(255), passwordHash)
+          .input('updatedAt', sql.DateTime2, updatedAt)
+          .query<RawUserRecord>(
+            `
+            UPDATE dbo.gksk_users
+            SET password_hash = @passwordHash,
+                updated_at = @updatedAt
+            OUTPUT INSERTED.id, INSERTED.username, INSERTED.password_hash, INSERTED.full_name, INSERTED.is_active, INSERTED.created_at, INSERTED.updated_at
+            WHERE id = @id;
+            `,
+          );
+        const row = result.recordset[0];
+        return row ? toSafeUserRow(mapRawUserRow(row)) : null;
+      },
+
+      updateActiveStatus: async (
+        id: number,
+        isActive: boolean,
+        now?: string | Date,
+      ): Promise<SafeUserRow | null> => {
+        const updatedAt = new Date(toIsoTimestamp(now));
+        const result = await this.pool
+          .request()
+          .input('id', sql.Int, id)
+          .input('isActive', sql.Bit, isActive)
+          .input('updatedAt', sql.DateTime2, updatedAt)
+          .query<RawUserRecord>(
+            `
+            UPDATE dbo.gksk_users
+            SET is_active = @isActive,
+                updated_at = @updatedAt
+            OUTPUT INSERTED.id, INSERTED.username, INSERTED.password_hash, INSERTED.full_name, INSERTED.is_active, INSERTED.created_at, INSERTED.updated_at
+            WHERE id = @id;
+            `,
+          );
+        const row = result.recordset[0];
+        return row ? toSafeUserRow(mapRawUserRow(row)) : null;
+      },
+    };
 
     this.batches = {
       create: async (input: CreateImportBatchInput): Promise<ImportBatchRow> => {

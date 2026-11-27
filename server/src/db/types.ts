@@ -5,15 +5,65 @@ import type {
   ServerIssue,
 } from '@gksk/shared';
 
-/** Danh sách 4 bảng chuẩn trong CSDL MSSQL (bắt buộc 100% có tiền tố `gksk_`). */
+/** Danh sách 5 bảng chuẩn trong CSDL MSSQL (bắt buộc 100% có tiền tố `gksk_`). */
 export const GKSK_TABLE_NAMES = [
   'gksk_schema_migrations',
   'gksk_import_batches',
   'gksk_certificates',
   'gksk_submissions',
+  'gksk_users',
 ] as const;
 
 export type GkskTableName = (typeof GKSK_TABLE_NAMES)[number];
+
+/** Bản ghi tài khoản người dùng nội bộ trong CSDL (`gksk_users`). */
+export interface UserRow {
+  id: number;
+  username: string;
+  passwordHash: string;
+  fullName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Thông tin người dùng an toàn trả về API (tuyệt đối không có `passwordHash`). */
+export interface SafeUserRow {
+  id: number;
+  username: string;
+  fullName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertUserInput {
+  username: string;
+  passwordHash: string;
+  fullName?: string;
+  isActive?: boolean;
+  now?: string | Date;
+}
+
+/** Kho lưu trữ tài khoản người dùng nội bộ (`gksk_users`). */
+export interface UsersRepository {
+  findByUsername(username: string): Promise<UserRow | null>;
+  findById(id: number): Promise<UserRow | null>;
+  list(): Promise<SafeUserRow[]>;
+  upsertByUsername(
+    input: UpsertUserInput,
+  ): Promise<{ row: SafeUserRow; created: boolean }>;
+  updatePassword(
+    id: number,
+    passwordHash: string,
+    now?: string | Date,
+  ): Promise<SafeUserRow | null>;
+  updateActiveStatus(
+    id: number,
+    isActive: boolean,
+    now?: string | Date,
+  ): Promise<SafeUserRow | null>;
+}
 
 /** Bản ghi đợt Import file Excel (`gksk_import_batches`). */
 export interface ImportBatchRow {
@@ -228,10 +278,11 @@ export interface SubmissionsRepository {
   ): Promise<SubmissionRow | null>;
 }
 
-/** Giao diện tổng hợp 3 kho dữ liệu của hệ thống GKSKLaiXe (IMPLEMENTATION-PLAN.md S8). */
+/** Giao diện tổng hợp 4 kho dữ liệu của hệ thống GKSKLaiXe (IMPLEMENTATION-PLAN.md S8 & ARCHITECTURE.md §5). */
 export interface DbRepositories {
   readonly kind: 'in-memory' | 'mssql';
   readonly batches: BatchesRepository;
   readonly certificates: CertificatesRepository;
   readonly submissions: SubmissionsRepository;
+  readonly users: UsersRepository;
 }

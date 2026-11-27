@@ -58,6 +58,18 @@ describe('loadConfig', () => {
     expect(cfg.auth.allowInsecureCookie).toBe(false);
   });
 
+  it('cho phép cấu hình APP_LOGIN_PASSWORD dạng mật khẩu thường khi không truyền APP_LOGIN_PASSWORD_HASH', () => {
+    const cfg = loadConfig(
+      makeValidEnv({
+        APP_LOGIN_USER: 'thangnh',
+        APP_LOGIN_PASSWORD_HASH: '',
+        APP_LOGIN_PASSWORD: 'MyPlainPassword@2026',
+      }),
+    );
+    expect(cfg.auth.loginUser).toBe('thangnh');
+    expect(cfg.auth.loginPasswordHash.startsWith('$2')).toBe(true);
+  });
+
   it('hỗ trợ ALLOW_INSECURE_COOKIE=true cho mạng LAN nội bộ chạy qua HTTP', () => {
     const cfg = loadConfig(
       makeValidEnv({

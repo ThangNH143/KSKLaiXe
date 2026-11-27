@@ -637,7 +637,7 @@ describe('server/src/db — S8 Repository Contract Tests & MSSQL gksk_* Safety V
     expect(poolCfg.database).toBe('GKSKLaiXe');
 
     const applied = await runMigrations(fakePool);
-    expect(applied).toEqual(['001_init']);
+    expect(applied).toEqual(['001_init', '002_users']);
 
     const mssqlRepo = new MssqlRepositories(fakePool);
     expect(mssqlRepo.kind).toBe('mssql');
@@ -696,10 +696,14 @@ describe('server/src/db — S8 Repository Contract Tests & MSSQL gksk_* Safety V
   it('10. Quét tĩnh 001_init.sql, mssqlRepo.ts và connection.ts: 100% bảng gksk_*, 0 DROP/TRUNCATE, 100% truy vấn dùng @param qua .input()', () => {
     const migrationsDir = resolveDefaultMigrationsDir();
     const sqlPath = path.join(migrationsDir, '001_init.sql');
+    const sqlUsersPath = path.join(migrationsDir, '002_users.sql');
     const mssqlRepoPath = path.join(__dirname, 'mssqlRepo.ts');
     const connectionPath = path.join(__dirname, 'connection.ts');
 
-    const sqlContent = fs.readFileSync(sqlPath, 'utf8');
+    const sqlContent =
+      fs.readFileSync(sqlPath, 'utf8') +
+      '\n' +
+      fs.readFileSync(sqlUsersPath, 'utf8');
     const mssqlRepoContent = fs.readFileSync(mssqlRepoPath, 'utf8');
     const connectionContent = fs.readFileSync(connectionPath, 'utf8');
 
@@ -708,7 +712,7 @@ describe('server/src/db — S8 Repository Contract Tests & MSSQL gksk_* Safety V
     expect(/\b(DROP|TRUNCATE)\b/i.test(mssqlRepoContent)).toBe(false);
     expect(/\b(DROP|TRUNCATE)\b/i.test(connectionContent)).toBe(false);
 
-    // 2. Mọi bảng tạo trong 001_init.sql đều thuộc đúng 4 bảng tiền tố gksk_ và có IF OBJECT_ID(...) IS NULL
+    // 2. Mọi bảng tạo trong migrations/*.sql đều thuộc đúng 5 bảng tiền tố gksk_ và có IF OBJECT_ID(...) IS NULL
     const createdTables = Array.from(
       sqlContent.matchAll(/CREATE\s+TABLE\s+(?:dbo\.)?([A-Za-z0-9_]+)/gi),
       (m) => m[1] ?? '',
@@ -770,5 +774,48 @@ describe('server/src/db — S8 Repository Contract Tests & MSSQL gksk_* Safety V
     for (const param of usedSqlParams) {
       expect(declaredInputs.has(param)).toBe(true);
     }
+  });
+
+  it('11. UsersRepository (InMemory & MSSQL): upsertByUsername, findByUsername, list (ẩn passwordHash), updatePassword, updateActiveStatus', async () => {
+    const repo = createRepositories();
+
+    const u1 = await repo.users.upsertByUsername({
+      username: 'thangnh',
+      passwordHash: '$2b$10$hash1',
+      fullName: 'Nguyễn Hoàng Thắng',
+    });
+    expect(u1.created).toBe(true);
+    expect(u1.row.id).toBe(1);
+    expect(u1.row.username).toBe('thangnh');
+    expect(u1.row.fullName).toBe('Nguyễn Hoàng Thắng');
+    expect(u1.row.isActive).toBe(true);
+    expect('passwordHash' in u1.row).toBe(false);
+
+    // Upsert lại cùng username -> cập nhật thông tin, giữ nguyên id
+    const u1Updated = await repo.users.upsertByUsername({
+      username: 'thangnh',
+      passwordHash: '$2b$10$hash2',
+      fullName: 'Nguyễn Hoàng Thắng (KHTH)',
+    });
+    expect(u1Updated.created).toBe(false);
+    expect(u1Updated.row.id).toBe(1);
+    expect(u1Updated.row.fullName).toBe('Nguyễn Hoàng Thắng (KHTH)');
+
+    const found = await repo.users.findByUsername('THANGNH');
+    expect(found?.id).toBe(1);
+    expect(found?.passwordHash).toBe('$2b$10$hash2');
+
+    // Cập nhật mật khẩu & trạng thái
+    const afterPass = await repo.users.updatePassword(1, '$2b$10$hash3');
+    expect(afterPass?.id).toBe(1);
+    expect((await repo.users.findById(1))?.passwordHash).toBe('$2b$10$hash3');
+
+    const afterStatus = await repo.users.updateActiveStatus(1, false);
+    expect(afterStatus?.isActive).toBe(false);
+    expect((await repo.users.findById(1))?.isActive).toBe(false);
+
+    const list = await repo.users.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]?.username).toBe('thangnh');
   });
 });

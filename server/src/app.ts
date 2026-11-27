@@ -31,6 +31,8 @@ import { createCertificatesRouter } from './routes/certificates.js';
 import { healthRouter } from './routes/health.js';
 import { createImportRouter } from './routes/import.js';
 import { createSendRouter } from './routes/send.js';
+import { createSystemRouter } from './routes/system.js';
+import { createUsersRouter } from './routes/users.js';
 import {
   createCertificateService,
   type CertificateService,
@@ -212,7 +214,11 @@ export function createApp(options?: CreateAppOptions): Express {
   const rawLoginPasswordHash =
     options?.auth?.loginPasswordHash ??
     cfg?.auth.loginPasswordHash ??
-    process.env.APP_LOGIN_PASSWORD_HASH;
+    process.env.APP_LOGIN_PASSWORD_HASH ??
+    (process.env.APP_LOGIN_PASSWORD &&
+    process.env.APP_LOGIN_PASSWORD.trim().length > 0
+      ? bcrypt.hashSync(process.env.APP_LOGIN_PASSWORD.trim(), 10)
+      : undefined);
 
   const rawSessionSecret =
     options?.auth?.sessionSecret ??
@@ -221,7 +227,7 @@ export function createApp(options?: CreateAppOptions): Express {
 
   if (appEnv === 'production' && (!rawLoginPasswordHash || !rawSessionSecret)) {
     throw new Error(
-      'Khi APP_ENV=production, bắt buộc phải cấu hình APP_LOGIN_PASSWORD_HASH và SESSION_SECRET.',
+      'Khi APP_ENV=production, bắt buộc phải cấu hình APP_LOGIN_PASSWORD_HASH (hoặc APP_LOGIN_PASSWORD) và SESSION_SECRET.',
     );
   }
 
@@ -325,6 +331,7 @@ export function createApp(options?: CreateAppOptions): Express {
     appEnv,
     loginUser,
     loginPasswordHash,
+    usersRepo: repos.users,
     sessionStore,
     rateLimiter,
     csrfMiddleware,
@@ -338,6 +345,17 @@ export function createApp(options?: CreateAppOptions): Express {
   protectedApi.use(createImportRouter({ importService }));
   protectedApi.use(createCertificatesRouter({ certificateService }));
   protectedApi.use(createSendRouter({ sendService, jobService }));
+  protectedApi.use(createUsersRouter({ usersRepo: repos.users, logger: log }));
+  protectedApi.use(
+    createSystemRouter({
+      repos,
+      gkskClient,
+      facilityId,
+      facilityName,
+      baseUrlHost: publicConfig.baseUrlHost,
+      logger: log,
+    }),
+  );
 
   const apiMountPoints = subpathPrefix
     ? ['/api', `${subpathPrefix}/api`]

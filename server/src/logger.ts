@@ -5,6 +5,10 @@ const SENSITIVE_KEYS = [
   'authorization',
   'Authorization',
   'password',
+  'currentPassword',
+  'newPassword',
+  'passwordHash',
+  'password_hash',
   'dbPassword',
   'token',
   'fields',
@@ -20,6 +24,7 @@ const SENSITIVE_KEYS = [
   'DB_PASSWORD',
   'GKSK_PASSWORD',
   'SESSION_SECRET',
+  'APP_LOGIN_PASSWORD',
   'APP_LOGIN_PASSWORD_HASH',
 ] as const;
 

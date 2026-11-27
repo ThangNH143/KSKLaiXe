@@ -11,13 +11,28 @@ import type {
   DbRepositories,
   ImportBatchRow,
   ReconcileCounts,
+  SafeUserRow,
   SubmissionRow,
   SubmissionsRepository,
   UpdateCertificateStatusInput,
   UpdateSubmissionInput,
   UpsertCertificateInput,
   UpsertCertificateResult,
+  UpsertUserInput,
+  UserRow,
+  UsersRepository,
 } from './types.js';
+
+export function toSafeUserRow(row: UserRow): SafeUserRow {
+  return {
+    id: row.id,
+    username: row.username,
+    fullName: row.fullName,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
 
 export function toIsoTimestamp(value?: string | Date | null): string {
   if (!value) {
@@ -203,18 +218,136 @@ export class InMemoryRepositories implements DbRepositories {
   public readonly batches: BatchesRepository;
   public readonly certificates: CertificatesRepository;
   public readonly submissions: SubmissionsRepository;
+  public readonly users: UsersRepository;
 
   private nextBatchId = 1;
   private nextCertificateId = 1;
   private nextSubmissionId = 1;
+  private nextUserId = 1;
 
   private readonly batchStore = new Map<number, ImportBatchRow>();
   private readonly certificateStore = new Map<number, CertificateRow>();
   private readonly certificateIdBySo = new Map<string, number>();
   private readonly submissionStore = new Map<number, SubmissionRow>();
   private readonly submissionIdByMsgId = new Map<string, number>();
+  private readonly userStore = new Map<number, UserRow>();
+  private readonly userIdByUsernameLower = new Map<string, number>();
 
   constructor() {
+    this.users = {
+      findByUsername: async (username: string): Promise<UserRow | null> => {
+        const key = username.trim().toLowerCase();
+        if (!key) {
+          return null;
+        }
+        const id = this.userIdByUsernameLower.get(key);
+        if (id === undefined) {
+          return null;
+        }
+        const row = this.userStore.get(id);
+        return row ? { ...row } : null;
+      },
+
+      findById: async (id: number): Promise<UserRow | null> => {
+        const row = this.userStore.get(id);
+        return row ? { ...row } : null;
+      },
+
+      list: async (): Promise<SafeUserRow[]> => {
+        return Array.from(this.userStore.values())
+          .sort((a, b) => a.id - b.id)
+          .map(toSafeUserRow);
+      },
+
+      upsertByUsername: async (
+        input: UpsertUserInput,
+      ): Promise<{ row: SafeUserRow; created: boolean }> => {
+        const cleanUsername = input.username.trim();
+        if (!cleanUsername) {
+          throw new Error('Tên đăng nhập (username) không được để trống.');
+        }
+        const lowerKey = cleanUsername.toLowerCase();
+        const nowIso = toIsoTimestamp(input.now);
+        const existingId = this.userIdByUsernameLower.get(lowerKey);
+
+        if (existingId !== undefined) {
+          const existing = this.userStore.get(existingId);
+          if (existing) {
+            const updated: UserRow = {
+              ...existing,
+              username: cleanUsername,
+              passwordHash: input.passwordHash,
+              fullName:
+                input.fullName !== undefined
+                  ? input.fullName.trim()
+                  : existing.fullName,
+              isActive:
+                input.isActive !== undefined ? input.isActive : existing.isActive,
+              updatedAt: nowIso,
+            };
+            this.userStore.set(existingId, updated);
+            return {
+              row: toSafeUserRow(updated),
+              created: false,
+            };
+          }
+        }
+
+        const id = this.nextUserId++;
+        const newRow: UserRow = {
+          id,
+          username: cleanUsername,
+          passwordHash: input.passwordHash,
+          fullName: (input.fullName ?? '').trim(),
+          isActive: input.isActive ?? true,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        this.userStore.set(id, newRow);
+        this.userIdByUsernameLower.set(lowerKey, id);
+        return {
+          row: toSafeUserRow(newRow),
+          created: true,
+        };
+      },
+
+      updatePassword: async (
+        id: number,
+        passwordHash: string,
+        now?: string | Date,
+      ): Promise<SafeUserRow | null> => {
+        const existing = this.userStore.get(id);
+        if (!existing) {
+          return null;
+        }
+        const updated: UserRow = {
+          ...existing,
+          passwordHash,
+          updatedAt: toIsoTimestamp(now),
+        };
+        this.userStore.set(id, updated);
+        return toSafeUserRow(updated);
+      },
+
+      updateActiveStatus: async (
+        id: number,
+        isActive: boolean,
+        now?: string | Date,
+      ): Promise<SafeUserRow | null> => {
+        const existing = this.userStore.get(id);
+        if (!existing) {
+          return null;
+        }
+        const updated: UserRow = {
+          ...existing,
+          isActive,
+          updatedAt: toIsoTimestamp(now),
+        };
+        this.userStore.set(id, updated);
+        return toSafeUserRow(updated);
+      },
+    };
+
     this.batches = {
       create: async (input: CreateImportBatchInput): Promise<ImportBatchRow> => {
         const id = this.nextBatchId++;
@@ -692,9 +825,12 @@ export class InMemoryRepositories implements DbRepositories {
     this.certificateIdBySo.clear();
     this.submissionStore.clear();
     this.submissionIdByMsgId.clear();
+    this.userStore.clear();
+    this.userIdByUsernameLower.clear();
     this.nextBatchId = 1;
     this.nextCertificateId = 1;
     this.nextSubmissionId = 1;
+    this.nextUserId = 1;
   }
 }
 

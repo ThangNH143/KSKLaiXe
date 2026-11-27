@@ -218,8 +218,11 @@ export function createStatefulMssqlPoolEmulator(): {
         async query(sqlText: string) {
           state.sqlCallLog.push({ sqlText: sqlText.trim(), params: { ...params } });
 
-          // 1. Migration 001_init.sql
-          if (sqlText.includes('CREATE TABLE dbo.gksk_schema_migrations')) {
+          // 1. Migration 001_init.sql & 002_users.sql
+          if (
+            sqlText.includes('CREATE TABLE dbo.gksk_schema_migrations') ||
+            sqlText.includes('CREATE TABLE dbo.gksk_users')
+          ) {
             for (const tbl of GKSK_TABLE_NAMES) {
               state.tablesCreated.add(tbl);
             }
@@ -904,15 +907,15 @@ async function main(): Promise<void> {
     'STATEFUL_TSQL_POOL_EMULATOR (001_init.sql + MssqlRepositories)',
   );
   assert(
-    state.tablesCreated.size === 4,
-    'Phải tạo đủ 4 bảng tiền tố gksk_*',
+    state.tablesCreated.size === 5,
+    'Phải tạo đủ 5 bảng tiền tố gksk_*',
   );
   assert(
     state.indexesCreated.size === 3,
     'Phải tạo đủ 3 chỉ mục tiền tố ix_gksk_*',
   );
   process.stdout.write(
-    `[test:mssql] PASS 100%: ${summary.testsPassed}/7 nhóm kiểm thử MssqlRepositories (${state.sqlCallLog.length} câu lệnh T-SQL tham số hóa đã thực thi trên 4 bảng [${summary.tablesVerified.join(', ')}]).\n`,
+    `[test:mssql] PASS 100%: ${summary.testsPassed}/7 nhóm kiểm thử MssqlRepositories (${state.sqlCallLog.length} câu lệnh T-SQL tham số hóa đã thực thi trên 5 bảng [${summary.tablesVerified.join(', ')}]).\n`,
   );
 }
 

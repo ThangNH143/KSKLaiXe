@@ -9,6 +9,7 @@ import {
 import type { Logger } from 'pino';
 import { z } from 'zod';
 import type { AppEnv, PublicConfig } from '../config.js';
+import type { UsersRepository } from '../db/types.js';
 import { logger as defaultLogger } from '../logger.js';
 import { sendErrorResponse } from '../middleware/errorHandler.js';
 import {
@@ -30,6 +31,16 @@ const loginBodySchema = z.object({
     .min(1, 'Mật khẩu không được để trống.'),
 });
 
+const changePasswordBodySchema = z.object({
+  currentPassword: z
+    .string({ error: 'Vui lòng nhập mật khẩu hiện tại.' })
+    .min(1, 'Mật khẩu hiện tại không được để trống.'),
+  newPassword: z
+    .string({ error: 'Vui lòng nhập mật khẩu mới.' })
+    .min(6, 'Mật khẩu mới phải có ít nhất 6 ký tự.')
+    .max(128, 'Mật khẩu mới không được vượt quá 128 ký tự.'),
+});
+
 function timingSafeEqualString(a: string, b: string): boolean {
   const hashA = crypto.createHash('sha256').update(a, 'utf8').digest();
   const hashB = crypto.createHash('sha256').update(b, 'utf8').digest();
@@ -48,6 +59,7 @@ export interface AuthRouterDeps {
   appEnv: AppEnv;
   loginUser: string;
   loginPasswordHash: string;
+  usersRepo?: UsersRepository;
   sessionStore: SessionStore;
   rateLimiter: LoginRateLimiter;
   csrfMiddleware: RequestHandler;
@@ -56,9 +68,10 @@ export interface AuthRouterDeps {
 
 /**
  * Router xác thực ứng dụng nội bộ (ARCHITECTURE.md §4 & §7, IMPLEMENTATION-PLAN.md S12):
- * - `POST /api/auth/login`: kiểm CSRF + rate-limit (10 lần sai/15 phút/IP → 429) + so mật khẩu bằng bcrypt → cấp cookie phiên HttpOnly, SameSite=Lax, Secure (production/HTTPS), TTL 8 giờ.
+ * - `POST /api/auth/login`: kiểm CSRF + rate-limit (10 lần sai/15 phút/IP → 429) + xác thực kết hợp bảng `dbo.gksk_users` (băm bcrypt) và tài khoản dự phòng `.env` → cấp cookie phiên HttpOnly, SameSite=Lax, Secure (production/HTTPS), TTL 8 giờ.
  * - `POST /api/auth/logout`: kiểm CSRF + thu hồi phiên + xóa cookie.
  * - `GET /api/auth/me`: kiểm tra phiên hiện tại (200 nếu đã đăng nhập, 401 nếu chưa).
+ * - `POST /api/auth/change-password`: đổi mật khẩu cá nhân sau khi đăng nhập (cập nhật vào `dbo.gksk_users`).
  */
 export function createAuthRouter(deps: AuthRouterDeps): Router {
   const router = Router();
@@ -66,6 +79,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
     appEnv,
     loginUser,
     loginPasswordHash,
+    usersRepo,
     sessionStore,
     rateLimiter,
     csrfMiddleware,
@@ -92,11 +106,44 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
       const ip = extractClientIp(req);
       const { username, password } = parsed.data;
 
-      // Luôn chạy cả so username hằng thời gian và bcrypt.compare để tránh timing oracle
-      const usernameMatches = timingSafeEqualString(username, loginUser);
-      const passwordMatches = await safeBcryptCompare(password, loginPasswordHash);
+      let authenticatedUsername: string | null = null;
+      let accountDisabled = false;
 
-      if (!usernameMatches || !passwordMatches) {
+      // 1. Ưu tiên kiểm tra tài khoản trong bảng dbo.gksk_users
+      const dbUser = usersRepo
+        ? await usersRepo.findByUsername(username)
+        : null;
+
+      if (dbUser) {
+        if (!dbUser.isActive) {
+          accountDisabled = true;
+          // Vẫn chạy bcrypt.compare giả để giữ thời gian phản hồi đồng nhất
+          await safeBcryptCompare(password, loginPasswordHash);
+        } else {
+          const dbPassMatches = await safeBcryptCompare(
+            password,
+            dbUser.passwordHash,
+          );
+          if (dbPassMatches) {
+            authenticatedUsername = dbUser.username;
+          }
+        }
+      }
+
+      // 2. Nếu chưa khớp trong DB (hoặc user chưa có trong DB) và tài khoản không bị khóa,
+      // kiểm tra tài khoản dự phòng cấu hình trong .env (APP_LOGIN_USER / APP_LOGIN_PASSWORD_HASH)
+      if (!authenticatedUsername && !accountDisabled) {
+        const envUserMatches = timingSafeEqualString(username, loginUser);
+        const envPassMatches = await safeBcryptCompare(
+          password,
+          loginPasswordHash,
+        );
+        if (envUserMatches && envPassMatches) {
+          authenticatedUsername = loginUser;
+        }
+      }
+
+      if (!authenticatedUsername) {
         const failStatus = rateLimiter.recordFailure(ip);
         log.warn(
           {
@@ -104,6 +151,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
             ip,
             failedCount: failStatus.failedCount,
             blocked: failStatus.blocked,
+            ...(accountDisabled ? { reason: 'account_disabled' } : {}),
           },
           'Đăng nhập ứng dụng thất bại',
         );
@@ -111,7 +159,9 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
           res,
           401,
           'INVALID_CREDENTIALS',
-          'Tên đăng nhập hoặc mật khẩu không đúng.',
+          accountDisabled
+            ? 'Tài khoản này đã bị khóa. Vui lòng liên hệ quản trị viên.'
+            : 'Tên đăng nhập hoặc mật khẩu không đúng.',
         );
         return;
       }
@@ -123,7 +173,9 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
         sessionStore.revokeSignedToken(existingToken);
       }
 
-      const { session, signedToken } = sessionStore.createSession(loginUser);
+      const { session, signedToken } = sessionStore.createSession(
+        authenticatedUsername,
+      );
       res.cookie(
         SESSION_COOKIE_NAME,
         signedToken,
@@ -134,6 +186,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
         {
           event: 'auth_login_success',
           ip,
+          username: session.username,
         },
         'Đăng nhập ứng dụng thành công',
       );
@@ -190,6 +243,99 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
       expiresAt: new Date(session.expiresAt).toISOString(),
     });
   });
+
+  router.post(
+    '/auth/change-password',
+    csrfMiddleware,
+    async (req: Request, res: Response) => {
+      const session = sessionStore.getSessionFromRequest(req);
+      if (!session) {
+        sendErrorResponse(
+          res,
+          401,
+          'UNAUTHORIZED',
+          'Chưa đăng nhập hoặc phiên đã hết hạn.',
+        );
+        return;
+      }
+
+      const parsed = changePasswordBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        sendErrorResponse(
+          res,
+          400,
+          'INVALID_PASSWORD_PAYLOAD',
+          parsed.error.issues[0]?.message ??
+            'Vui lòng nhập mật khẩu hiện tại và mật khẩu mới (tối thiểu 6 ký tự).',
+        );
+        return;
+      }
+
+      const { currentPassword, newPassword } = parsed.data;
+      const dbUser = usersRepo
+        ? await usersRepo.findByUsername(session.username)
+        : null;
+
+      let currentValid = false;
+      if (dbUser) {
+        currentValid = await safeBcryptCompare(
+          currentPassword,
+          dbUser.passwordHash,
+        );
+      } else if (timingSafeEqualString(session.username, loginUser)) {
+        currentValid = await safeBcryptCompare(
+          currentPassword,
+          loginPasswordHash,
+        );
+      }
+
+      if (!currentValid) {
+        sendErrorResponse(
+          res,
+          400,
+          'INVALID_CURRENT_PASSWORD',
+          'Mật khẩu hiện tại không đúng.',
+        );
+        return;
+      }
+
+      if (!usersRepo) {
+        sendErrorResponse(
+          res,
+          500,
+          'USERS_REPO_UNAVAILABLE',
+          'Kho tài khoản người dùng chưa sẵn sàng.',
+        );
+        return;
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 10);
+      if (dbUser) {
+        await usersRepo.updatePassword(dbUser.id, newHash);
+      } else {
+        await usersRepo.upsertByUsername({
+          username: session.username,
+          passwordHash: newHash,
+          fullName: 'Quản trị viên',
+          isActive: true,
+        });
+      }
+
+      log.info(
+        {
+          event: 'auth_password_changed',
+          username: session.username,
+          ip: extractClientIp(req),
+        },
+        'Người dùng đã đổi mật khẩu thành công',
+      );
+
+      res.status(200).json({
+        ok: true,
+        message: 'Đã cập nhật mật khẩu mới thành công.',
+      });
+    },
+  );
 
   return router;
 }

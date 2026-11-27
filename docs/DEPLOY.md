@@ -24,7 +24,9 @@
   2. `dbo.gksk_import_batches`
   3. `dbo.gksk_certificates`
   4. `dbo.gksk_submissions`
-- Khi khởi động, server tự động chạy migration `server/src/db/migrations/001_init.sql` với chốt chặn `IF OBJECT_ID(...) IS NULL` — **không bao giờ** chạy `DROP TABLE`, `TRUNCATE`, hay ảnh hưởng đến các bảng khác.
+  5. `dbo.gksk_users`
+- Khi khởi động, server tự động chạy các migration `server/src/db/migrations/001_init.sql` và `002_users.sql` với chốt chặn `IF OBJECT_ID(...) IS NULL` — **không bao giờ** chạy `DROP TABLE`, `TRUNCATE`, hay ảnh hưởng đến các bảng khác.
+- Tài khoản khai báo trong `.env` (`APP_LOGIN_USER` + `APP_LOGIN_PASSWORD_HASH` hoặc `APP_LOGIN_PASSWORD`) sẽ được **tự động khởi tạo (seed)** vào bảng `dbo.gksk_users` ngay khi server khởi động nếu chưa tồn tại.
 
 ### 2.1 Tạo Database (khuyến nghị tạo DB riêng) và tài khoản SQL riêng
 
@@ -168,6 +170,20 @@ VITE_BASE_PATH=
 npm run test:mssql
 ```
 Nếu thấy thông báo `[test:mssql] PASS 100% trên MSSQL thật...`, kết nối SQL Server và 4 bảng `dbo.gksk_*` đã sẵn sàng.
+
+### 4.4 Tạo / Đặt lại Mật khẩu Tài khoản Người dùng trong MSSQL (`dbo.gksk_users`)
+
+Ứng dụng xác thực người dùng qua bảng `dbo.gksk_users` (kèm dự phòng tài khoản trong `.env`). Quản trị viên có thể tạo nhanh tài khoản mới (ví dụ `thangnh`) hoặc đặt lại mật khẩu trực tiếp trên Windows Server bằng lệnh:
+
+```powershell
+# Tạo mới hoặc đặt lại mật khẩu cho tài khoản thangnh trong bảng dbo.gksk_users
+npm run user:set -- thangnh MatKhauMoi@2026 "Nguyễn Hoàng Thắng"
+```
+
+Sau khi đăng nhập vào giao diện web, người dùng có thể bấm nút **⚙️ Hệ thống & Tài khoản** trên thanh điều hướng để:
+1. **Kiểm tra kết nối Cổng Sở Y tế & Database MSSQL** (xác nhận tài khoản CSYT đăng nhập thành công lên `ksktd.dongnai.gov.vn` và kiểm tra trạng thái 5 bảng `dbo.gksk_*` trước khi đẩy dữ liệu thật).
+2. **Quản trị người dùng** (thêm tài khoản mới cho nhân viên, đặt lại mật khẩu, khóa/mở khóa tài khoản).
+3. **Đổi mật khẩu cá nhân** ngay trên giao diện web.
 
 ---
 
@@ -326,6 +342,7 @@ Khi máy chủ Windows Server đang chạy sẵn IIS ở cổng 80 (`Default Web
 | 2 | Truy cập `http://192.168.1.140/KSKLaiXe` báo `Cannot GET /` hoặc không thấy file `C:\Apps\GKSKLaiXe\logs\stdout.log` | 1. Cổng `PORT` trong `.env` (ví dụ `PORT=3002`) lệch với cổng trong `web.config` (`http://127.0.0.1:3001/{R:1}`).<br>2. File `.env` bị dính dòng ```` ```env ```` khi copy-paste.<br>3. Thư mục `C:\Apps\GKSKLaiXe\logs` chưa được tạo trước khi chạy `nssm start`. | 1. Đồng bộ đúng số cổng `PORT` giữa `.env` và `web.config`.<br>2. Xóa các ký tự markdown ```` ``` ```` trong `.env`.<br>3. Tạo thư mục log: `New-Item -ItemType Directory -Force "C:\Apps\GKSKLaiXe\logs"` rồi chạy `nssm restart GKSKLaiXe`. |
 | 3 | Khi chạy `npm run build` xuất hiện cảnh báo: `NODE_ENV=production is not supported in the .env file. Only NODE_ENV=development is supported...` | Vite 6 không cho phép khai báo `NODE_ENV=production` trong file `.env` (Vite tự động dùng `production` khi chạy `vite build`). | Xóa dòng `NODE_ENV=production` khỏi file `.env`. Biến `NODE_ENV=production` chỉ cần đặt trong `AppEnvironmentExtra` của NSSM (hoặc `ecosystem.config.cjs` của PM2). |
 | 4 | Truy cập `http://192.168.1.140/KSKLaiXe` tải được tiêu đề tab nhưng **màn hình trắng tinh**; mở F12 Console thấy lỗi: `Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID` cho `/KSKLaiXe/assets/index-*.js`/`.css`, kèm cảnh báo `Cross-Origin-Opener-Policy` và `Origin-Agent-Cluster` | Khi chạy qua IP mạng LAN bằng HTTP thường (`http://192.168.1.140`), mặc định `helmet()` gửi header `Content-Security-Policy: ... upgrade-insecure-requests` và `Strict-Transport-Security`, khiến trình duyệt tự động ép đổi link tải `.js`/`.css` sang `https://192.168.1.140/...` (va vào chứng chỉ tự ký của IIS nên bị chặn). | Đặt **`ALLOW_INSECURE_COOKIE=true`** trong `.env` và `nssm restart GKSKLaiXe`. Khi biến này bật (`[Commit #22]`), server tự động tắt directive `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` trên HTTP LAN (giữ nguyên các rule CSP chống XSS khác). Nếu trình duyệt đã lỡ nhớ HSTS cho IP đó, xóa cache hoặc vào `chrome://net-internals/#hsts` (hoặc `edge://net-internals/#hsts`) → mục **Delete domain security policies** → nhập `192.168.1.140` → bấm **Delete**, sau đó nhấn `Ctrl + F5`. |
+| 5 | Đăng nhập báo lỗi `401 (Unauthorized) — Tên đăng nhập hoặc mật khẩu không đúng` (ví dụ khi đăng nhập bằng `thangnh` mà `.env` đang để `APP_LOGIN_USER=admin` hoặc chuỗi `APP_LOGIN_PASSWORD_HASH` bị lỗi ký tự `$`) | Tài khoản `thangnh` chưa được tạo trong bảng `dbo.gksk_users` hoặc mật khẩu trong `.env` không khớp. | **Cách 1 (Khuyến nghị)**: Chạy lệnh tạo/đặt mật khẩu trực tiếp vào bảng `dbo.gksk_users` trên server (không cần restart NSSM):<br>`npm run user:set -- thangnh MatKhauCuaBan "Nguyễn Hoàng Thắng"`<br>**Cách 2**: Trong file `.env`, đặt `APP_LOGIN_USER=thangnh` và dùng trực tiếp `APP_LOGIN_PASSWORD=MatKhauCuaBan` (hoặc `APP_LOGIN_PASSWORD_HASH=...`), sau đó chạy `nssm restart GKSKLaiXe` — server sẽ tự động băm bcrypt và seed tài khoản `thangnh` vào `dbo.gksk_users`. |
 
 ---
 

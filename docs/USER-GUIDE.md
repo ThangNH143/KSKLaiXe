@@ -32,6 +32,10 @@
 3. Sau khi đăng nhập thành công, giao diện chính hiển thị thanh điều hướng gồm đúng **2 mục**:
    - **Danh sách & Đối soát** (trang chủ)
    - **Import Excel**
+   - Ở góc trên bên phải có nút **⚙️ Hệ thống & Tài khoản** cho phép:
+     - **Kiểm tra kết nối Cổng Sở Y tế & Database MSSQL** trước khi đẩy dữ liệu thật.
+     - **Quản trị người dùng** (`dbo.gksk_users`: thêm nhân viên, đặt lại mật khẩu, khóa/mở khóa tài khoản).
+     - **Đổi mật khẩu cá nhân**.
    - Ở góc trên luôn hiển thị **Mã CSYT và Tên cơ sở y tế** đang cấu hình.
    - **Lưu ý quan trọng khi chạy môi trường Thật (`production`)**: Đầu trang sẽ hiển thị **thanh cảnh báo màu đỏ nổi bật** nhắc nhở dữ liệu sẽ được gửi trực tiếp lên Hệ thống Sở Y tế Đồng Nai.
 

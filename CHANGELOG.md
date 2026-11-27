@@ -12,6 +12,7 @@
 ## Thay đổi tài liệu
 | Ngày | File | Thay đổi | Lý do |
 |---|---|---|---|
+| 2026-11-27 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `docs/USER-GUIDE.md`, `.env.example` | Bổ sung bảng `dbo.gksk_users` (migration `002_users.sql`), các endpoint quản trị người dùng (`/api/users`, `/api/auth/change-password`) & kiểm tra kết nối hệ thống (`POST /api/system/check-connection`), biến `APP_LOGIN_PASSWORD` tùy chọn, lệnh CLI `npm run user:set` và hướng dẫn khắc phục lỗi đăng nhập `401` vào mục Troubleshooting `docs/DEPLOY.md` | Hoàn thiện xác thực đa người dùng trong MSSQL + dự phòng `.env` và công cụ kiểm tra kết nối Cổng Sở Y tế & Database trước khi đẩy dữ liệu thật (`CR-20261127-auth-users-system-check`) |
 | 2026-11-26 | `docs/ARCHITECTURE.md`, `docs/DEPLOY.md` | Cập nhật `ARCHITECTURE.md §7` mô tả cơ chế `helmet` tự động tắt `upgrade-insecure-requests`, `hsts`, `crossOriginOpenerPolicy` và `originAgentCluster` khi `ALLOW_INSECURE_COOKIE=true`; bổ sung mục **6.1 Nhật ký Sự cố Thường gặp & Cách Xử lý khi Deploy IIS Subpath / NSSM (Troubleshooting)** vào `docs/DEPLOY.md` và bỏ `NODE_ENV=production` khỏi mẫu file `.env` | Sửa dứt điểm lỗi trắng trang (`ERR_CERT_AUTHORITY_INVALID` do CSP `upgrade-insecure-requests`) trên mạng LAN HTTP và ghi nhận đầy đủ kinh nghiệm xử lý sự cố thực tế (`CR-20261126-helmet-lan-http`) |
 | 2026-11-26 | `docs/DEPLOY.md`, `docs/ARCHITECTURE.md`, `.env.example` | Bổ sung **Phương án 3 — Chạy dưới Subpath trên IIS có sẵn (`http://192.168.1.140/KSKLaiXe`)** với cấu hình `VITE_BASE_PATH=/KSKLaiXe`, biến `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ và cập nhật phân quyền SQL thêm `db_ddladmin` cho `gksk_app_user` | Hỗ trợ triển khai thực tế dưới Subpath của Default Web Site IIS trong mạng LAN nội bộ (`CR-20261126-iis-subpath`) |
 | 2026-11-26 | `docs/STEP-PROMPTS.md` | Bổ sung **PHẦN 2 — Bộ Prompt Thêm / Sửa Chức năng, Sửa Lỗi & Bảo trì Code (Sau v1.0.0)** kèm bảng chọn Model Gemini 4 (`Neon High`, `Argon Medium`, `Argon High`) và Quy trình Thay đổi An toàn 6 bước | Giúp người dùng copy-paste khi cần thêm/sửa tính năng hoặc sửa lỗi mà vẫn khóa chặt các quy tắc bảo vệ code hiện có và `PROJECT-RULES.md` |
@@ -43,6 +44,43 @@
 ### Quyết định & sai khác so với tài liệu (nếu có)
 ### Ghi chú cho Agent sau
 ```
+
+## [CR-20261127-auth-users-system-check] Bổ sung bảng `dbo.gksk_users`, xác thực kết hợp DB + `.env`, CLI `npm run user:set`, Quản trị người dùng, Đổi mật khẩu & Kiểm tra kết nối Cổng Sở Y tế / Database — 2026-11-27 — Antigravity
+### Đã làm
+- **Tài liệu đi trước (`PROJECT-RULES.md §1.2`)**:
+  - Cập nhật `docs/ARCHITECTURE.md` (§2, §4, §5, §7): bổ sung bảng thứ 5 `dbo.gksk_users` (`002_users.sql`), các endpoint `/api/users`, `/api/users/:id/password`, `/api/users/:id/status`, `/api/auth/change-password`, và `POST /api/system/check-connection`.
+  - Cập nhật `docs/DEPLOY.md` (§2, §4.4, §6.1 Troubleshooting #5), `docs/USER-GUIDE.md` và `.env.example`: hướng dẫn lệnh `npm run user:set -- thangnh <MatKhau> "Nguyễn Hoàng Thắng"` để tạo/đặt mật khẩu tài khoản trực tiếp vào MSSQL và tùy chọn `APP_LOGIN_PASSWORD` trong `.env`.
+- **Cơ sở dữ liệu MSSQL (`dbo.gksk_users`) & Đồng bộ Repository**:
+  - Tạo migration idempotent `server/src/db/migrations/002_users.sql` (`IF OBJECT_ID(N'dbo.gksk_users', N'U') IS NULL`).
+  - Mở rộng `DbRepositories` (`server/src/db/types.ts`) thêm `users: UsersRepository` và cài đặt đồng bộ 100% trên cả `InMemoryRepositories` (`server/src/db/inMemoryRepo.ts`) lẫn `MssqlRepositories` (`server/src/db/mssqlRepo.ts`, 100% truy vấn dùng `.input()` tham số hóa, tuyệt đối không trả `passwordHash` ở hàm `list()`).
+  - Tự động seed tài khoản cấu hình trong `.env` (`APP_LOGIN_USER`) vào bảng `dbo.gksk_users` khi server khởi động (`server/src/index.ts`).
+- **Server API & Công cụ CLI**:
+  - Cập nhật `server/src/config.ts` & `server/src/app.ts`: hỗ trợ cả `APP_LOGIN_PASSWORD_HASH` (bcrypt) hoặc `APP_LOGIN_PASSWORD` (mật khẩu thường tự động băm bcrypt khi khởi động, tránh lỗi ký tự `$` trong `.env`).
+  - Cập nhật `server/src/routes/auth.ts`: xác thực kết hợp `dbo.gksk_users` (kiểm tra cả cờ `isActive`) + dự phòng `.env`, bổ sung `POST /api/auth/change-password`.
+  - Tạo mới `server/src/routes/users.ts`: quản trị danh sách người dùng, thêm/cập nhật tài khoản, đặt lại mật khẩu, khóa/mở khóa tài khoản (chống tự khóa chính mình).
+  - Tạo mới `server/src/routes/system.ts`: `POST /api/system/check-connection` kiểm tra trực tiếp kết nối 5 bảng `dbo.gksk_*` trên MSSQL và thử đăng nhập tài khoản CSYT (`gkskClient.login({ forceRefresh: true })`) lên Cổng Sở Y tế Đồng Nai (tuyệt đối không trả về token hay mật khẩu).
+  - Tạo script CLI `scripts/set-user.ts` (`npm run user:set -- <username> <password> ["Họ tên"]`) để quản trị viên tạo hoặc đặt lại mật khẩu tài khoản trong `dbo.gksk_users` ngay lập tức.
+- **Giao diện người dùng (`client/`)**:
+  - Tạo mới `client/src/components/SystemAdminModal.tsx`, `client/src/api/users.ts`, `client/src/api/system.ts` và gắn nút **⚙️ Hệ thống & Tài khoản** trên thanh điều hướng `client/src/App.tsx` với 3 tab: **🔌 Kiểm tra kết nối SYT & DB**, **👥 Quản trị người dùng**, và **🔑 Đổi mật khẩu của tôi**.
+
+### Đầu ra (file/đường dẫn/lệnh)
+- Tài liệu: `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `docs/USER-GUIDE.md`, `.env.example`, `CHANGELOG.md`.
+- Database & Backend: `server/src/db/migrations/002_users.sql`, `server/src/db/types.ts`, `server/src/db/inMemoryRepo.ts`, `server/src/db/mssqlRepo.ts`, `server/src/config.ts`, `server/src/logger.ts`, `server/src/routes/auth.ts`, `server/src/routes/users.ts`, `server/src/routes/system.ts`, `server/src/app.ts`, `server/src/index.ts`, `scripts/set-user.ts`, `package.json`.
+- Frontend: `client/src/api/auth.ts`, `client/src/api/users.ts`, `client/src/api/system.ts`, `client/src/api/index.ts`, `client/src/components/SystemAdminModal.tsx`, `client/src/App.tsx`, `client/src/App.css`.
+- Kiểm thử & Bằng chứng: `server/src/db/repo.test.ts`, `server/src/config.test.ts`, `server/src/routes/auth.test.ts`, `client/src/App.test.tsx`, `scripts/test-mssql.ts`, `scripts/verify-CR-20261127-auth-users-system-check.mjs`, `docs/evidence/CR-20261127-auth-users-system-check/`.
+
+### Kiểm thử (lệnh + kết quả tóm tắt)
+- `npm.cmd run lint`: PASS (0 errors, 0 warnings).
+- `npm.cmd run typecheck`: PASS (`@gksk/shared`, `@gksk/server`, `@gksk/client`, `@gksk/mock-gksk-api`).
+- `npm.cmd test`: PASS — 22/22 test files, 273/273 tests (`shared`: 145, `server`: 96, `client`: 22, `mock-gksk-api`: 10).
+- `npm.cmd run test:mssql`: PASS 100% (5 bảng `gksk_*`).
+- `node scripts/verify-CR-20261127-auth-users-system-check.mjs`: PASS 100%.
+
+### Cổng qua bước
+- ✔ Đăng nhập hoạt động với cả tài khoản trong bảng `dbo.gksk_users` (vd `thangnh`) lẫn tài khoản dự phòng trong `.env`.
+- ✔ 100% bảng MSSQL có tiền tố `gksk_*` (5 bảng), 0 `DROP`/`TRUNCATE`, 100% truy vấn dùng `.input()` tham số hóa.
+- ✔ Có công cụ kiểm tra kết nối trực tiếp Cổng Sở Y tế & Database MSSQL trên giao diện trước khi đẩy dữ liệu thật, không lộ token/mật khẩu.
+- ✔ Có đầy đủ ảnh chụp màn hình trình duyệt thực tế và biên bản kiểm chứng tại `docs/evidence/CR-20261127-auth-users-system-check/`.
 
 ## [CR-20261126-helmet-lan-http] Xử lý lỗi trắng trang trên mạng LAN HTTP (`helmet` tắt `upgrade-insecure-requests`/HSTS/COOP khi `ALLOW_INSECURE_COOKIE=true`) & Bổ sung cẩm nang Troubleshooting vào `docs/DEPLOY.md` — 2026-11-26 — Antigravity
 ### Đã làm

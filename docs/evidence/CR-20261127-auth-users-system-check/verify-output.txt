@@ -1,0 +1,23 @@
+[2026-11-27T01:43:56.139Z] === BẮT ĐẦU KIỂM CHỨNG CR-20261127-auth-users-system-check ===
+[2026-11-27T01:43:56.140Z] --- Đang chạy: ESLint (npm run lint) (npm.cmd run lint) ---
+[2026-11-27T01:44:02.482Z] PASS: ESLint (npm run lint) hoàn tất (exit code 0)
+[2026-11-27T01:44:02.482Z] --- Đang chạy: TypeScript Typecheck (npm run typecheck) (npm.cmd run typecheck) ---
+[2026-11-27T01:44:23.022Z] PASS: TypeScript Typecheck (npm run typecheck) hoàn tất (exit code 0)
+[2026-11-27T01:44:23.022Z] --- Đang chạy: Vitest Suite (npm test) (npm.cmd test) ---
+[2026-11-27T01:44:49.031Z] PASS: Vitest Suite (npm test) hoàn tất (exit code 0)
+[2026-11-27T01:44:49.033Z] PASS: Toàn bộ 4 workspaces (145 + 96 + 22 + 10 = 273 tests) đều PASS 100%
+[2026-11-27T01:44:49.033Z] --- Đang chạy: Kiểm thử MSSQL 5 bảng gksk_* (npm run test:mssql) (npm.cmd run test:mssql) ---
+[2026-11-27T01:44:51.517Z] PASS: Kiểm thử MSSQL 5 bảng gksk_* (npm run test:mssql) hoàn tất (exit code 0)
+[2026-11-27T01:44:51.517Z] PASS: npm run test:mssql xác nhận đủ 5 bảng tiền tố gksk_* (bao gồm gksk_users)
+[2026-11-27T01:44:51.517Z] --- Đang chạy: Build Production (npm run build) (npm.cmd run build) ---
+[2026-11-27T01:45:01.810Z] PASS: Build Production (npm run build) hoàn tất (exit code 0)
+[2026-11-27T01:45:01.828Z] PASS: Mock Cổng Sở Y tế đã sẵn sàng tại http://127.0.0.1:50607 (CSYT 75009)
+[2026-11-27T01:45:04.260Z] PASS: Server GKSKLaiXe đã sẵn sàng
+[2026-11-27T01:45:06.414Z] PASS: Đăng nhập bằng tài khoản thangnh thành công (hiển thị pill thangnh trên thanh điều hướng)
+[2026-11-27T01:45:06.486Z] Đã chụp ảnh đăng nhập thangnh thành công: G:\KSKLaiXe\docs\evidence\CR-20261127-auth-users-system-check\01-login-thangnh-success.png
+[2026-11-27T01:45:06.835Z] PASS: Kiểm tra kết nối Database (5 bảng gksk_*) và xác thực CSYT 75009 trên Cổng Sở Y tế đều thành công
+[2026-11-27T01:45:06.976Z] Đã chụp ảnh Kiểm tra kết nối SYT & Database: G:\KSKLaiXe\docs\evidence\CR-20261127-auth-users-system-check\02-system-connection-check.png
+[2026-11-27T01:45:07.518Z] Đã chụp ảnh Quản trị người dùng (dbo.gksk_users): G:\KSKLaiXe\docs\evidence\CR-20261127-auth-users-system-check\03-user-management-gksk-users.png
+[2026-11-27T01:45:07.937Z] Đã chụp ảnh Đổi mật khẩu cá nhân thành công: G:\KSKLaiXe\docs\evidence\CR-20261127-auth-users-system-check\04-change-password-success.png
+[2026-11-27T01:45:07.937Z] PASS: Trình duyệt có 0 lỗi console/pageerror trong suốt quá trình thao tác
+[2026-11-27T01:45:08.155Z] === HOÀN TẤT KIỂM CHỨNG CR-20261127-auth-users-system-check: 100% PASS ===

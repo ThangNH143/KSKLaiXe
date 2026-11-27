@@ -34,13 +34,13 @@ GKSK_LaiXe/
 │     ├─ gksk/      xml.ts  envelope.ts  signature.ts  client.ts  errors.ts  retry.ts
 │     ├─ db/        connection.ts  migrations/*.sql  types.ts  mssqlRepo.ts  inMemoryRepo.ts
 │     ├─ services/  certificateService.ts  sendService.ts  importService.ts  exportService.ts  jobService.ts
-│     ├─ routes/    auth.ts  certificates.ts  import.ts  send.ts  health.ts
+│     ├─ routes/    auth.ts  users.ts  system.ts  certificates.ts  import.ts  send.ts  health.ts
 │     └─ middleware/ requireAuth.ts  errorHandler.ts  rateLimit.ts
 ├─ client/
 │  └─ src/
-│     ├─ main.tsx  App.tsx  api/  (http.ts, certificates.ts, import.ts, send.ts)
+│     ├─ main.tsx  App.tsx  api/  (http.ts, auth.ts, users.ts, system.ts, certificates.ts, import.ts, send.ts)
 │     ├─ pages/    LoginPage.tsx  ImportPage.tsx  ListPage.tsx
-│     └─ components/  CertificateDetailDrawer.tsx  ReconcileSummary.tsx  IssueList.tsx  StatusBadge.tsx  XmlPreview.tsx  EnvBanner.tsx
+│     └─ components/  CertificateDetailDrawer.tsx  ReconcileSummary.tsx  IssueList.tsx  StatusBadge.tsx  XmlPreview.tsx  EnvBanner.tsx  SystemAdminModal.tsx
 ├─ tools/
 │  └─ mock-gksk-api/            # Express mock theo API-CONTRACT (S6)
 └─ tests/
@@ -79,7 +79,10 @@ Tất cả dưới `/api`, JSON, trừ các endpoint tải file (`.xml`, `.zip`,
 |---|---|---|
 | GET | `/api/health` | `{ok:true}` |
 | GET | `/api/config` | `{ appEnv, facilityId, facilityName, baseUrlHost }` — **không** có mật khẩu/token/chuỗi kết nối DB |
-| POST | `/api/auth/login` · `/api/auth/logout` · GET `/api/auth/me` | Đăng nhập ứng dụng (cookie `httpOnly`, `sameSite=lax`) |
+| POST | `/api/auth/login` · `/api/auth/logout` · GET `/api/auth/me` · POST `/api/auth/change-password` | Đăng nhập ứng dụng (xác thực kết hợp bảng `dbo.gksk_users` + tài khoản dự phòng `.env`, cookie `httpOnly`, `sameSite=lax`), đổi mật khẩu cá nhân |
+| GET · POST | `/api/users` | Danh sách tài khoản nội bộ trong `dbo.gksk_users` (không trả `password_hash`) · Thêm mới hoặc cập nhật tài khoản |
+| PATCH | `/api/users/:id/password` · `/api/users/:id/status` | Đặt lại mật khẩu cho nhân viên · Khóa / Mở khóa tài khoản (`isActive`, chống tự khóa chính mình) |
+| POST | `/api/system/check-connection` | Kiểm tra trực tiếp kết nối CSDL MSSQL (5 bảng `gksk_*`) và đăng nhập thử tài khoản CSYT lên Cổng Sở Y tế (`forceRefresh: true`, **không** trả về token/mật khẩu) |
 | GET | `/api/import/template` | Tải `GKSK_mau_nhap_lieu.xlsx` |
 | POST | `/api/import/excel` | `multipart/form-data` (`file`) → bản xem trước từng dòng + trạng thái đối chiếu `SO` với DB (`new`, `overwrite_pending`, `accepted_unchanged`, `accepted_modified`) |
 | POST | `/api/import/commit` | Body `{filename, rows[]}` → lưu/ghi đè các dòng được chọn (cả dòng `ready` lẫn dòng `invalid` có `SO`) vào DB |
@@ -98,7 +101,7 @@ Tất cả dưới `/api`, JSON, trừ các endpoint tải file (`.xml`, `.zip`,
 
 > **Lưu ý:** Không có các endpoint `POST /api/certificates` (tạo tay) hay `PUT /api/certificates/:id` (sửa tay) trong giai đoạn v1 vì toàn bộ dữ liệu đi qua luồng Import Excel.
 
-## 5. Schema DB (MSSQL) — migration `001_init.sql`
+## 5. Schema DB (MSSQL) — migrations `001_init.sql` & `002_users.sql`
 
 Tất cả bảng dùng tiền tố **`gksk_`** để an toàn khi dùng chung Database trên MSSQL Server hiện tại hoặc tạo Database riêng. Migration tự động kiểm tra và tạo bảng nếu chưa tồn tại (`IF OBJECT_ID(...) IS NULL`).
 
@@ -106,6 +109,17 @@ Tất cả bảng dùng tiền tố **`gksk_`** để an toàn khi dùng chung D
 CREATE TABLE gksk_schema_migrations (
   version       NVARCHAR(64) NOT NULL PRIMARY KEY,
   applied_at    DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE TABLE gksk_users (
+  id            INT IDENTITY(1,1) PRIMARY KEY,
+  username      NVARCHAR(64) NOT NULL,
+  password_hash NVARCHAR(255) NOT NULL,          -- Chuỗi băm bcrypt (cost=10)
+  full_name     NVARCHAR(128) NOT NULL DEFAULT N'',
+  is_active     BIT NOT NULL DEFAULT 1,
+  created_at    DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  updated_at    DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  CONSTRAINT ux_gksk_users_username UNIQUE (username)
 );
 
 CREATE TABLE gksk_import_batches (
@@ -192,7 +206,7 @@ Các bước trong `sendCertificate(id)`:
 | Chủ đề | Quy định |
 |---|---|
 | Bí mật | `.env` chỉ ở server; `/api/config` không trả bí mật hay thông tin DB; client không có token CSYT |
-| Phiên ứng dụng | cookie `httpOnly`, `sameSite=lax`, `secure` khi `APP_ENV=production` (trừ khi bật `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ) hoặc sau HTTPS; hết hạn 8 giờ; mật khẩu so bằng `bcrypt` |
+| Phiên ứng dụng | cookie `httpOnly`, `sameSite=lax`, `secure` khi `APP_ENV=production` (trừ khi bật `ALLOW_INSECURE_COOKIE=true` cho mạng LAN HTTP nội bộ) hoặc sau HTTPS; hết hạn 8 giờ; xác thực kết hợp bảng `dbo.gksk_users` (băm `bcrypt`) và tài khoản dự phòng `.env` (`APP_LOGIN_USER` + `APP_LOGIN_PASSWORD_HASH` hoặc `APP_LOGIN_PASSWORD` tự băm lúc khởi động); tự động seed tài khoản `.env` vào `dbo.gksk_users` khi khởi động |
 | Chống thử mật khẩu | giới hạn 10 lần đăng nhập sai / 15 phút / IP |
 | CSRF | API chỉ nhận `application/json` hoặc `multipart` kèm header tùy biến `X-Requested-With: gksk` do client gắn; từ chối thiếu header với các method ghi |
 | Upload | `multer` bộ nhớ, ≤ 5 MB, chỉ `.xlsx` (kiểm magic bytes `PK`), không ghi đĩa |
